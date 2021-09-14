@@ -1,0 +1,110 @@
+name: "Unit tests"
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-18.04
+    continue-on-error: ${{ matrix.experimental }} # Experimental builds may fail
+
+    defaults:
+      run:
+        shell: bash -l -e -o pipefail {0}
+
+    env:
+      WSI_CONDA_CHANNEL: "https://dnap.cog.sanger.ac.uk/npg/conda/devel/generic"
+      CONDA_TEST_ENVIRONMENT: "testenv"
+      PYTHON_VERSION=: "3.9"
+
+    strategy:
+      matrix:
+        include:
+          # iRODS 4.2.10 clients vs 4.2.7 server
+          - irods: "4.2.10"
+            server_image: "wsinpg/ub-16.04-irods-4.2.7:latest"
+            baton: "3.2.0"
+            experimental: false
+          # iRODS 4.2.10 clients vs 4.2.10 server
+          - irods: "4.2.10"
+            server_image: "wsinpg/ub-18.04-irods-4.2.10:latest"
+            baton: "3.2.0"
+            experimental: false
+
+    services:
+      irods:
+        image: ${{ matrix.server_image }}
+        ports:
+          - 1247:1247
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: "Initialize Miniconda"
+      run: |
+        echo 'source $CONDA/etc/profile.d/conda.sh' >> "$HOME/.bash_profile"
+
+    - name: "Cache Miniconda"
+      id: cache-miniconda
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/conda/pkgs
+          ~/conda/envs
+        key: ${{ runner.os }}-miniconda
+
+    - name: "Configure Miniconda"
+      run: |
+        conda config --prepend pkgs_dirs "$HOME/conda/pkgs"
+        conda config --prepend envs_dirs "$HOME/conda/envs"
+
+        conda config --set auto_update_conda False
+        conda config --prepend channels "$WSI_CONDA_CHANNEL"
+        conda info
+
+    - name: "Install iRODS clients"
+      run: |
+        conda create -y -n "$CONDA_TEST_ENVIRONMENT"
+        conda install -y -n "$CONDA_TEST_ENVIRONMENT" "irods-icommands=${{ matrix.irods }}"
+        conda install -y -n "$CONDA_TEST_ENVIRONMENT" "baton=${{ matrix.baton }}"
+
+    - name: "Configure iRODS clients"
+      run: |
+        conda activate "$CONDA_TEST_ENVIRONMENT"
+
+        mkdir -p "$HOME/.irods"
+        cat <<'EOF' > "$HOME/.irods/irods_environment.json"
+        {
+            "irods_host": "localhost",
+            "irods_port": 1247,
+            "irods_user_name": "irods",
+            "irods_zone_name": "testZone",
+            "irods_home": "/testZone/home/irods",
+            "irods_default_resource": "replResc",
+            "irods_default_hash_scheme": "MD5"
+        }
+        EOF
+
+        echo "irods" | script -q -c "iinit" /dev/null
+        ienv
+        ilsresc
+        ils
+
+        baton-do --version
+
+    - name: "Setup Python"
+      run: |
+        conda activate "$CONDA_TEST_ENVIRONMENT"
+        conda install -c defaults python="$PYTHON_VERSION"
+
+    - name: "Setup Python dependencies"
+      run: |
+        conda activate "$CONDA_TEST_ENVIRONMENT"
+        pip install -r requirements.txt
+        pip install -r test-requirements.txt
+
+    - name: "Run tests"
+      run: |
+        conda activate "$CONDA_TEST_ENVIRONMENT"
+
+        export PYTHONPATH=$PWD/src:$PWD:tests:$PYTHONPATH
+        pytest --it
