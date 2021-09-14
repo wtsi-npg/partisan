@@ -27,19 +27,6 @@ from pytest import mark as m
 
 from partisan.exception import RodsError
 from partisan.irods import AC, AVU, Baton, Collection, DataObject, Permission
-from irods_fixture import (
-    baton_session,
-    ont_gridion,
-    simple_collection,
-    simple_data_object,
-)
-
-#  Stop IDEs "optimizing" away these imports
-
-_ = baton_session
-_ = simple_collection
-_ = simple_data_object
-_ = ont_gridion
 
 
 @m.describe("AC")

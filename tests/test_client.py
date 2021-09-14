@@ -20,13 +20,6 @@
 from pytest import mark as m
 
 from partisan.irods import Baton, Collection
-from irods_fixture import (
-    baton_session,
-    simple_collection,
-)
-
-_ = baton_session
-_ = simple_collection
 
 
 @m.describe("Baton")
