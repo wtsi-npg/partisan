@@ -23,6 +23,7 @@ import json
 import subprocess
 from abc import abstractmethod
 from collections import defaultdict
+from contextlib import AbstractContextManager
 from datetime import datetime
 from enum import Enum, unique
 from functools import total_ordering
@@ -726,7 +727,7 @@ def make_rods_item(client: Baton, item: Dict) -> Union[DataObject, Collection]:
     return Collection(client, PurePath(item[Baton.COLL]))
 
 
-class Baton(object):
+class Baton(AbstractContextManager):
     """A wrapper around the baton-do client program, used for interacting with
     iRODS."""
 
@@ -772,6 +773,13 @@ class Baton(object):
 
     def __init__(self):
         self.proc = None
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
 
     def is_running(self) -> bool:
         """Returns true if the client is running."""

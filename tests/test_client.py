@@ -17,9 +17,11 @@
 #
 # @author Keith James <kdj@sanger.ac.uk>
 
+import pytest
 from pytest import mark as m
 
-from partisan.irods import Baton, Collection
+from partisan.exception import RodsError
+from partisan.irods import Baton, Collection, DataObject
 
 
 @m.describe("Baton")
@@ -53,3 +55,29 @@ class TestBatonClient(object):
         coll = Collection(client, simple_collection)
         assert coll.exists()
         client.stop()
+
+    @m.contect("When used as a ContextManager")
+    @m.it("Starts on context entry")
+    def test_context_enter(self):
+        with Baton() as client:
+            assert client.is_running()
+
+    @m.it("Stops on context exit")
+    def test_context_exit(self):
+        c: Baton
+        with Baton() as client:
+            c = client
+
+        assert not c.is_running()
+
+    @m.it("Stops on a raised exception")
+    def test_context_exit(self):
+        c: Baton
+        with Baton() as client:
+            c = client
+            obj = DataObject(client, "/no/such/path")
+
+            with pytest.raises(RodsError, match=r"does not exist"):
+                obj.list()
+
+        assert not c.is_running()
