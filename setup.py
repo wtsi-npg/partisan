@@ -38,6 +38,6 @@ setup(
     python_requires=">=3.9",
     setup_requires=["setuptools_scm"],
     install_requires=["structlog"],
-    tests_require=["pytest", "pytest-it"],
+    tests_require=["black", "pytest", "pytest-it"],
     scripts=[],
 )
