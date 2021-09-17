@@ -1,5 +1,7 @@
 # partisan
 
+[![Unit tests](https://github.com/kjsanger/partisan/actions/workflows/run-tests.yml/badge.svg)](https://github.com/kjsanger/partisan/actions/workflows/run-tests.yml)
+
     partisan |ˈpɑː.tɪˌzæn|
 
     noun, A long-handled spear with a triangular, double-edged  blade and 
