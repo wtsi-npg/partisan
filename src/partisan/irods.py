@@ -19,17 +19,21 @@
 
 from __future__ import annotations  # Will not be needed in Python 3.10
 
+import atexit
 import json
 import subprocess
+import threading
 from abc import abstractmethod
 from collections import defaultdict
-from contextlib import AbstractContextManager
+from contextlib import contextmanager
 from datetime import datetime
 from enum import Enum, unique
 from functools import total_ordering
 from os import PathLike
 from pathlib import Path, PurePath
-from typing import Any, Dict, List, Tuple, Union
+from queue import LifoQueue, Queue
+from threading import Thread
+from typing import Annotated, Any, Dict, List, Tuple, Union
 
 from structlog import get_logger
 
@@ -47,14 +51,523 @@ iRODS client 'baton' (https://github.com/wtsi-npg/baton).
 """
 
 
+class Baton:
+    """A wrapper around the baton-do client program, used for interacting with
+    iRODS.
+    """
+
+    CLIENT = "baton-do"
+
+    AVUS = "avus"
+    ATTRIBUTE = "attribute"
+    VALUE = "value"
+    UNITS = "units"
+
+    COLL = "collection"
+    OBJ = "data_object"
+    ZONE = "zone"
+
+    ACCESS = "access"
+    OWNER = "owner"
+    LEVEL = "level"
+
+    CHMOD = "chmod"
+    LIST = "list"
+    GET = "get"
+    PUT = "put"
+    CHECKSUM = "checksum"
+    METAQUERY = "metaquery"
+
+    METAMOD = "metamod"
+    ADD = "add"
+    REM = "rem"
+
+    OP = "operation"
+    ARGS = "arguments"
+    TARGET = "target"
+
+    RESULT = "result"
+    SINGLE = "single"
+    MULTIPLE = "multiple"
+    CONTENTS = "contents"
+    DATA = "data"
+
+    ERR = "error"
+    MSG = "message"
+    CODE = "code"
+
+    def __init__(self):
+        self._proc = None
+        self._pid = None
+        self._mutex = threading.Lock()  # For interaction with the client process
+
+    def __str__(self):
+        return f"<Baton {Baton.CLIENT}, running: {self.is_running()}, PID: {self._pid}>"
+
+    def is_running(self) -> bool:
+        """Returns true if the client is running."""
+        return self._proc and self._proc.poll() is None
+
+    def start(self):
+        """Starts the client if it is not already running."""
+        if self.is_running():
+            log.warning(
+                "Tried to start a Baton instance that is already running",
+                pid=self._proc.pid,
+            )
+            return
+
+        self._proc = subprocess.Popen(
+            [Baton.CLIENT, "--unbuffered"],
+            bufsize=0,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self._pid = self._proc.pid
+        log.debug(f"Started {Baton.CLIENT} process", pid=self._pid)
+
+    def stop(self):
+        """Stops the client if it is running."""
+        if not self.is_running():
+            return
+
+        self._proc.stdin.close()
+        try:
+            log.debug(f"Terminating {Baton.CLIENT} process", pid=self._pid)
+            self._proc.terminate()
+            self._proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            log.error(
+                f"Failed to terminate {Baton.CLIENT} process; killing",
+                pid=self._pid,
+            )
+            self._proc.kill()
+        self._proc = None
+
+    def list(
+        self,
+        item: Dict,
+        acl=False,
+        avu=False,
+        contents=False,
+        recurse=False,
+        size=False,
+        timestamp=False,
+        timeout=None,
+        tries=1,
+    ) -> List[Dict]:
+        """Lists i.e. reports on items in iRODS.
+
+        Args:
+            item: A dictionary representing the item. When serialized as JSON,
+            this must be suitable input for baton-do.
+            acl: Include ACL information in the result
+            avu: Include AVU information in the result
+            contents: Include contents in the result (for a collection item)
+            recurse: Recurse into collections (for a collection item)
+            size: Include size information in the result (for a data object)
+            timestamp: Include timestamp information in the result (for a data object)
+            timeout: Operation timeout
+            tries: Number of times to try the operation
+        """
+        if recurse:
+            raise NotImplementedError("recurse")
+
+        result = self._execute(
+            Baton.LIST,
+            {
+                "acl": acl,
+                "avu": avu,
+                "contents": contents,
+                "size": size,
+                "timestamp": timestamp,
+            },
+            item,
+            timeout=timeout,
+            tries=tries,
+        )
+        if contents:
+            result = result[Baton.CONTENTS]
+        else:
+            result = [result]
+
+        return result
+
+    def checksum(
+        self,
+        item,
+        calculate_checksum=False,
+        recalculate_checksum=False,
+        verify_checksum=False,
+        timeout=None,
+        tries=1,
+    ) -> str:
+        result = self._execute(
+            Baton.CHECKSUM,
+            {
+                "calculate": calculate_checksum,
+                "recalculate": recalculate_checksum,
+                "verify": verify_checksum,
+            },
+            item,
+            timeout=timeout,
+            tries=tries,
+        )
+        checksum = result[Baton.CHECKSUM]
+        return checksum
+
+    def meta_add(self, item: Dict, timeout=None, tries=1):
+        self._execute(
+            Baton.METAMOD, {Baton.OP: Baton.ADD}, item, timeout=timeout, tries=tries
+        )
+
+    def meta_rem(self, item: Dict, timeout=None, tries=1):
+        self._execute(
+            Baton.METAMOD, {Baton.OP: Baton.REM}, item, timeout=timeout, tries=tries
+        )
+
+    def meta_query(
+        self,
+        avus: List[AVU],
+        zone=None,
+        collection=False,
+        data_object=False,
+        timeout=None,
+        tries=1,
+    ) -> Dict:
+        args = {}
+        if collection:
+            args["collection"] = True
+        if data_object:
+            args["object"] = True
+
+        item = {Baton.AVUS: avus}
+        if zone:
+            item[Baton.COLL] = self._zone_hint_to_path(zone)
+
+        return self._execute(Baton.METAQUERY, args, item, timeout=timeout, tries=tries)
+
+    def ac_set(self, item: Dict, recurse=False, timeout=None, tries=1):
+        self._execute(
+            Baton.CHMOD, {"recurse": recurse}, item, timeout=timeout, tries=tries
+        )
+
+    def get(
+        self,
+        item: Dict,
+        local_path: Path,
+        verify_checksum=True,
+        force=True,
+        timeout=None,
+        tries=1,
+    ) -> int:
+        # TODO: Note that baton does not use rcDataObjGet to get data. It streams the
+        #  file while calculating the MD5 and overwrites existing files without
+        #  warning. Therefore it is similar to using verify_checksum=True,
+        #  force=True. Maybe add an rcDataObjGet mode to benefit from parallel get?
+
+        # Let's be sure users are aware if they try to change these at the moment.
+        if not verify_checksum:
+            raise BatonError(
+                f"{Baton.CLIENT} does not support get without checksum verification"
+            )
+        if not force:
+            raise BatonError(
+                f"{Baton.CLIENT} does not support get without forced overwriting"
+            )
+
+        item["directory"] = local_path.parent
+        item["file"] = local_path.name
+
+        self._execute(
+            Baton.GET,
+            {"save": True, "verify": verify_checksum, "force": force},
+            item,
+            timeout=timeout,
+            tries=tries,
+        )
+        return local_path.stat().st_size
+
+    def read(self, item: Dict, timeout=None, tries=1) -> str:
+        result = self._execute(Baton.GET, {}, item, timeout=timeout, tries=tries)
+        if Baton.DATA not in result:
+            raise InvalidJSONError(
+                f"Invalid result '{result}': data property was missing"
+            )
+        return result[Baton.DATA]
+
+    def put(
+        self,
+        item: Dict,
+        local_path: Path,
+        calculate_checksum=True,
+        verify_checksum=True,
+        force=True,
+        timeout=None,
+        tries=1,
+    ):
+        item["directory"] = local_path.parent
+        item["file"] = local_path.name
+
+        self._execute(
+            Baton.PUT,
+            {
+                "checksum": calculate_checksum,
+                "verify": verify_checksum,
+                "force": force,
+            },
+            item,
+            timeout=timeout,
+            tries=tries,
+        )
+
+    def _execute(
+        self, operation: str, args: Dict, item: Dict, timeout=None, tries=1
+    ) -> Dict:
+        if not self.is_running():
+            log.debug(f"{Baton.CLIENT} is not running ... starting")
+            self.start()
+            if not self.is_running():
+                raise BatonError(f"{Baton.CLIENT} failed to start")
+
+        wrapped = self._wrap(operation, args, item)
+
+        # The most common failure mode we encounter with clients that use the iRODS C
+        # API is where the server stops responding to API calls on the current
+        # connection. In order to timeout these bad operations, round-trips to the
+        # server are run in their own thread which provides API for managing the
+        # timeout behaviour.
+        #
+        # Not all long-duration API calls are bad, to timeouts must be set by
+        # operation type. A "put" operation of a multi-GiB file may legitimately take
+        # hours, a metadata change may not.
+        lifo = LifoQueue(maxsize=1)
+        with self._mutex:
+            t = Thread(target=lambda q, w: q.put(self._send(w)), args=(lifo, wrapped))
+            t.start()
+
+            for i in range(tries):
+                t.join(timeout=timeout)
+                if not t.is_alive():
+                    break
+                log.warning(f"Timed out sending", client=self, tryno=i, doc=wrapped)
+
+        # If thread is still running because it timed out on every attempt, this will
+        # block. By letting the thread run while we've released the lock, we will
+        # cause ourselves problems. By setting a timeout here (1 second is arbitrary)
+        # we will raise an Empty exception so that the caller can shut down this
+        # client, if needed.
+        response = lifo.get(timeout=1)
+
+        # original version:
+        # response = self._send(self._wrap(operation, args, item))
+        return self._unwrap(response)
+
+    @staticmethod
+    def _wrap(operation: str, args: Dict, item: Dict) -> Dict:
+        return {
+            Baton.OP: operation,
+            Baton.ARGS: args,
+            Baton.TARGET: item,
+        }
+
+    @staticmethod
+    def _unwrap(envelope: Dict) -> Dict:
+        # If there is an error report from the iRODS server in the envelope, we need to
+        # raise a RodsError
+        if Baton.ERR in envelope:
+            err = envelope[Baton.ERR]
+            if Baton.CODE not in err:
+                raise InvalidEnvelopeError("Error code was missing", envelope=envelope)
+            if Baton.MSG not in err:
+                raise InvalidEnvelopeError(
+                    "Error message was missing", envelope=envelope
+                )
+
+            raise RodsError(err[Baton.MSG], err[Baton.CODE])
+
+        if Baton.RESULT not in envelope:
+            raise InvalidEnvelopeError(
+                "Operation result property was missing", envelope=envelope
+            )
+
+        if Baton.SINGLE in envelope[Baton.RESULT]:
+            return envelope[Baton.RESULT][Baton.SINGLE]
+
+        if Baton.MULTIPLE in envelope[Baton.RESULT]:
+            return envelope[Baton.RESULT][Baton.MULTIPLE]
+
+        raise InvalidEnvelopeError(
+            "Operation result value was empty", envelope=envelope
+        )
+
+    def _send(self, envelope: Dict) -> Dict:
+        encoded = json.dumps(envelope, cls=BatonJSONEncoder)
+        log.debug("Sending", msg=encoded)
+
+        msg = bytes(encoded, "utf-8")
+        resp, _ = self._proc.communicate(msg)
+        log.debug("Received", msg=resp)
+
+        return json.loads(resp, object_hook=as_baton)
+
+    @staticmethod
+    def _zone_hint_to_path(zone) -> str:
+        z = str(zone)
+        if z.startswith("/"):
+            return z
+
+        return "/" + z
+
+
+class BatonPool:
+    """A pool of Baton clients."""
+
+    def __init__(self, maxsize=4):
+        self._queue = Queue(maxsize=maxsize)  # Queue is threadsafe anyway
+        self._mutex = threading.RLock()  # For managing open/close state
+
+        with self._mutex:
+            self._open = False
+
+            for _ in range(maxsize):
+                c = Baton()
+                log.debug(f"Adding a new client to the pool: {c}")
+                self._queue.put(c)
+            self._open = True
+
+    def __repr__(self):
+        return (
+            f"<BatonPool maxsize: {self._queue.maxsize}, "
+            f"qsize: {self._queue.qsize()} open: {self.is_open()}>"
+        )
+
+    def is_open(self):
+        """Return True if the pool is open to get clients."""
+        with self._mutex:
+            return self._open
+
+    def close(self):
+        """Close the pool and stop all the clients."""
+        with self._mutex:
+            log.debug("Closing the client pool")
+            self._open = False
+            while not self._queue.empty():
+                c: Baton = self._queue.get_nowait()
+                c.stop()
+
+    def get(self, timeout=None) -> Baton:
+        """Get a client from the pool. if a timeout is supplied, waiting up to the
+        timeout.
+
+        Keyword Args:
+            timeout: Timeout to get a client, in seconds. Raises queue.Empty if the
+            operation times out.
+
+        Returns: Baton
+        """
+        if not self.is_open():
+            raise BatonError("Attempted to get a client from a closed pool")
+
+        c: Baton = self._queue.get(timeout=timeout)
+        log.debug(f"Getting a client from the pool: {c}")
+
+        if not c.is_running():
+            c.start()
+        return c
+
+    def put(self, c: Baton, timeout=None):
+        """Put a client back into the pool. if a timeout is supplied, waiting up to the
+        timeout.
+
+        Keyword Args:
+        timeout: Timeout to put a client, in seconds. Raises queue.Full if the
+        operation times out.
+        """
+        log.debug(f"Returning a client to the pool: {c}")
+        self._queue.put(c, timeout=timeout)
+
+
+@contextmanager
+def client_pool(maxsize=4) -> BatonPool:
+    """Yields a pool of clients that will be closed automatically when the pool goes
+    out of scope.
+
+    Keyword Args:
+        maxsize: The maximum number of active clients in the pool.
+
+    Yields: BatonPool
+    """
+    pool = BatonPool(maxsize=maxsize)
+    try:
+        yield pool
+    finally:
+        pool.close()
+
+
+@contextmanager
+def client(pool: BatonPool, timeout=None) -> Baton:
+    """Yields a client from a pool, returning it to the pool automatically when the
+    client goes out of scope.
+
+    Args:
+        pool: The pool from which to get the client.
+    Keyword Args:
+        timeout: Timeout for both getting the client and putting it back, in seconds.
+        Raises queue.Empty or queue.Full if the get or put operations
+        respectively, time out.
+
+    Returns: Baton
+    """
+    c = pool.get(timeout=timeout)
+    try:
+        yield c
+    finally:
+        pool.put(c, timeout=timeout)
+
+
+def _default_pool_init() -> BatonPool:
+    pool = BatonPool(maxsize=4)
+    atexit.register(pool.close)
+    return pool
+
+
+default_pool: Annotated[BatonPool, "The default client pool"] = _default_pool_init()
+
+
+def meta_query(
+    avus: List[AVU],
+    zone=None,
+    collection=False,
+    data_object=False,
+    pool=default_pool,
+    timeout=None,
+    tries=1,
+) -> List[Union[DataObject, Collection]]:
+    with client(pool) as c:
+        result = c.meta_query(
+            avus,
+            zone=zone,
+            collection=collection,
+            data_object=data_object,
+            timeout=timeout,
+            tries=tries,
+        )
+        items = [_make_rods_item(item, pool=pool) for item in result]
+        items.sort()
+
+        return items
+
+
 @unique
 class Permission(Enum):
     """The kinds of data access permission available to iRODS users."""
 
     NULL = "null"
-    OWN = ("own",)
-    READ = ("read",)
-    WRITE = ("write",)
+    OWN = "own"
+    READ = "read"
+    WRITE = "write"
 
 
 @total_ordering
@@ -159,6 +672,9 @@ class AVU(object):
         returns a dict mapping the attribute to a list of AVUs with that
         attribute.
 
+        Args:
+            avus: AVUs to collate.
+
         Returns: Dict[str: List[AVU]]
         """
         collated = defaultdict(lambda: list())
@@ -179,6 +695,7 @@ class AVU(object):
         Args:
             avus: AVUs removed, which must share the same attribute
             and namespace (if any).
+        Keyword Args:
             history_date: A datetime to be embedded as part of the history
             AVU value.
 
@@ -316,9 +833,9 @@ class AVU(object):
 class RodsItem(PathLike):
     """A base class for iRODS path entities."""
 
-    def __init__(self, client: Baton, path: Union[PurePath, str]):
-        self.client = client
+    def __init__(self, path: Union[PurePath, str], pool=default_pool):
         self.path = PurePath(path)
+        self.pool = pool
 
     def exists(self) -> bool:
         """Return true if the item exists in iRODS."""
@@ -329,12 +846,15 @@ class RodsItem(PathLike):
                 return False
         return True
 
-    def meta_add(self, *avus: Union[AVU, Tuple[AVU]]) -> int:
+    def meta_add(self, *avus: Union[AVU, Tuple[AVU]], timeout=None, tries=1) -> int:
         """Add AVUs to the item's metadata, if they are not already present.
         Return the number of AVUs added.
 
         Args:
             *avus: AVUs to add.
+        Keyword Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
 
         Returns: int
         """
@@ -345,16 +865,20 @@ class RodsItem(PathLike):
             log.debug("Adding AVUs", path=self.path, avus=to_add)
             item = self._to_dict()
             item[Baton.AVUS] = to_add
-            self.client.meta_add(item)
+            with client(self.pool) as c:
+                c.meta_add(item, timeout=timeout, tries=tries)
 
         return len(to_add)
 
-    def meta_remove(self, *avus: Union[AVU, Tuple[AVU]]) -> int:
+    def meta_remove(self, *avus: Union[AVU, Tuple[AVU]], timeout=None, tries=1) -> int:
         """Remove AVUs from the item's metadata, if they are present.
         Return the number of AVUs removed.
 
         Args:
             *avus: AVUs to remove.
+        Keyword Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
 
         Returns: int
         """
@@ -365,12 +889,18 @@ class RodsItem(PathLike):
             log.debug("Removing AVUs", path=self.path, avus=to_remove)
             item = self._to_dict()
             item[Baton.AVUS] = to_remove
-            self.client.meta_rem(item)
+            with client(self.pool) as c:
+                c.meta_rem(item, timeout=timeout, tries=tries)
 
         return len(to_remove)
 
     def meta_supersede(
-        self, *avus: Union[AVU, Tuple[AVU]], history=False, history_date=None
+        self,
+        *avus: Union[AVU, Tuple[AVU]],
+        history=False,
+        history_date=None,
+        timeout=None,
+        tries=1,
     ) -> Tuple[int, int]:
         """Remove AVUs from the item's metadata that share an attribute with
          any of the argument AVUs and add the argument AVUs to the item's
@@ -380,10 +910,13 @@ class RodsItem(PathLike):
          Args:
              avus: AVUs to add in place of existing AVUs sharing those
              attributes.
+         Keyword Args:
              history: Create history AVUs describing any AVUs removed when
              superseding. See AVU.history.
              history_date: A datetime to be embedded as part of the history
              AVU values.
+             timeout: Operation timeout in seconds.
+             tries: Number of times to try the operation.
 
         Returns: Tuple[int, int]
         """
@@ -404,7 +937,8 @@ class RodsItem(PathLike):
             log.debug("Removing AVUs", path=self.path, avus=to_remove)
             item = self._to_dict()
             item[Baton.AVUS] = to_remove
-            self.client.meta_rem(item)
+            with client(self.pool) as c:
+                c.meta_rem(item, timeout=timeout, tries=tries)
 
         to_add = sorted(set(avus).difference(current))
         if history:
@@ -417,18 +951,24 @@ class RodsItem(PathLike):
             log.debug("Adding AVUs", path=self.path, avus=to_add)
             item = self._to_dict()
             item[Baton.AVUS] = to_add
-            self.client.meta_add(item)
+            with client(self.pool) as c:
+                c.meta_add(item, timeout=timeout, tries=tries)
 
         return len(to_remove), len(to_add)
 
-    def ac_add(self, *acs: Union[AC, Tuple[AC]], recurse=False) -> int:
+    def ac_add(
+        self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
+    ) -> int:
         """Add access controls to the item. Return the number of access
         controls added. If some of the argument access controls are already
         present, those arguments will be ignored.
 
         Args:
             acs: Access controls.
+        Keyword Args:
             recurse: Recursively add access control.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
 
         Returns: int
         """
@@ -438,18 +978,24 @@ class RodsItem(PathLike):
             log.debug("Adding to ACL", path=self.path, ac=to_add)
             item = self._to_dict()
             item[Baton.ACCESS] = to_add
-            self.client.ac_set(item, recurse=recurse)
+            with client(self.pool) as c:
+                c.ac_set(item, recurse=recurse, timeout=timeout, tries=tries)
 
         return len(to_add)
 
-    def ac_rem(self, *acs: Union[AC, Tuple[AC]], recurse=False) -> int:
+    def ac_rem(
+        self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
+    ) -> int:
         """Remove access controls from the item. Return the number of access
         controls removed. If some of the argument access controls are not
         present, those arguments will be ignored.
 
         Args:
             acs: Access controls.
+        Keyword Args
             recurse: Recursively add access control.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
 
         Returns: int
         """
@@ -464,12 +1010,13 @@ class RodsItem(PathLike):
 
             item = self._to_dict()
             item[Baton.ACCESS] = to_remove
-            self.client.ac_set(item, recurse=recurse)
+            with client(self.pool) as c:
+                c.ac_set(item, recurse=recurse, timeout=timeout, tries=tries)
 
         return len(to_remove)
 
     def ac_supersede(
-        self, *acs: Union[AC, Tuple[AC]], recurse=False
+        self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
     ) -> Tuple[int, int]:
         """Remove all access controls from the item, replacing them with the
         specified access controls. Return the numbers of access controls
@@ -477,7 +1024,10 @@ class RodsItem(PathLike):
 
         Args:
             acs: Access controls.
+        Keyword Args:
             recurse: Recursively supersede access controls.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
 
         Returns: Tuple[int, int]
         """
@@ -494,33 +1044,43 @@ class RodsItem(PathLike):
 
             item = self._to_dict()
             item[Baton.ACCESS] = to_remove
-            self.client.ac_set(item, recurse=recurse)
+            with client(self.pool) as c:
+                c.ac_set(item, recurse=recurse, timeout=timeout, tries=tries)
 
         to_add = sorted(set(acs).difference(current))
         if to_add:
             log.debug("Adding to ACL", path=self.path, ac=to_add)
             item = self._to_dict()
             item[Baton.ACCESS] = to_add
-            self.client.ac_set(item, recurse=recurse)
+            with client(self.pool) as c:
+                c.ac_set(item, recurse=recurse, timeout=timeout, tries=tries)
 
         return len(to_remove), len(to_add)
 
-    def metadata(self) -> List[AVU]:
+    def metadata(self, timeout=None, tries=1) -> List[AVU]:
         """Return the item's metadata.
+
+        Keyword Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
 
         Returns: List[AVU]
         """
-        item = self._list(avu=True).pop()
+        item = self._list(avu=True, timeout=timeout, tries=tries).pop()
         if Baton.AVUS not in item.keys():
             raise BatonError(f"{Baton.AVUS} key missing from {item}")
 
         return sorted(item[Baton.AVUS])
 
-    def acl(self) -> List[AC]:
+    def acl(self, timeout=None, tries=1) -> List[AC]:
         """Return the item's Access Control List (ACL).
 
+        Keyword Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
         Returns: List[AC]"""
-        item = self._list(acl=True).pop()
+        item = self._list(acl=True, timeout=timeout, tries=tries).pop()
         if Baton.ACCESS not in item.keys():
             raise BatonError(f"{Baton.ACCESS} key missing from {item}")
 
@@ -550,26 +1110,32 @@ class DataObject(RodsItem):
     DataObject is a PathLike for the iRODS path it represents.
     """
 
-    def __init__(self, client: Baton, remote_path: Union[PurePath, str]):
-        super().__init__(client, PurePath(remote_path).parent)
+    def __init__(self, remote_path: Union[PurePath, str], pool=default_pool):
+        super().__init__(PurePath(remote_path).parent, pool=pool)
         self.name = PurePath(remote_path).name
 
-    def list(self) -> DataObject:
+    def list(self, timeout=None, tries=1) -> DataObject:
         """Return a new DataObject representing this one.
+
+        Keyword Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
 
         Returns: DataObject
         """
-        item = self._list().pop()
+        item = self._list(timeout=timeout, tries=tries).pop()
         if Baton.OBJ not in item.keys():
             raise BatonError(f"{Baton.OBJ} key missing from {item}")
 
-        return make_rods_item(self.client, item)
+        return _make_rods_item(item, pool=self.pool)
 
     def checksum(
         self,
         calculate_checksum=False,
         recalculate_checksum=False,
         verify_checksum=False,
+        timeout=None,
+        tries=1,
     ) -> str:
         """Get the checksum of the data object. If no checksum has been calculated on
         the remote side, return None.
@@ -581,22 +1147,36 @@ class DataObject(RodsItem):
             replicates.
             verify_checksum: Verify the local checksum against the remote checksum.
             Verification implies checksum calculation.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
 
         Returns: str
         """
 
         item = self._to_dict()
-        return self.client.checksum(
-            item,
-            calculate_checksum=calculate_checksum,
-            recalculate_checksum=recalculate_checksum,
-            verify_checksum=verify_checksum,
-        )
+        with client(self.pool) as c:
+            return c.checksum(
+                item,
+                calculate_checksum=calculate_checksum,
+                recalculate_checksum=recalculate_checksum,
+                verify_checksum=verify_checksum,
+                timeout=timeout,
+                tries=tries,
+            )
 
-    def get(self, local_path: Union[Path, str], verify_checksum=True) -> int:
+    def get(
+        self, local_path: Union[Path, str], verify_checksum=True, timeout=None, tries=1
+    ) -> int:
         """Get the data object from iRODS"""
         item = self._to_dict()
-        return self.client.get(item, Path(local_path), verify_checksum=verify_checksum)
+        with client(self.pool) as c:
+            return c.get(
+                item,
+                Path(local_path),
+                verify_checksum=verify_checksum,
+                timeout=timeout,
+                tries=tries,
+            )
 
     def put(
         self,
@@ -604,35 +1184,45 @@ class DataObject(RodsItem):
         calculate_checksum=False,
         verify_checksum=True,
         force=True,
+        timeout=None,
+        tries=1,
     ):
         """Put the data object into iRODS.
 
         Args:
             local_path: The local path of a file to put into iRODS at the path
             specified by this data object.
+        Keyword Args:
             calculate_checksum: Calculate remote checksums for all replicates. If
             checksums exist, this is s no-op.
             verify_checksum: Verify the local checksum against the remote checksum.
             Verification implies checksum calculation.
             force: Overwrite any data object already present in iRODS.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
         """
         item = self._to_dict()
-        self.client.put(
-            item,
-            Path(local_path),
-            calculate_checksum=calculate_checksum,
-            verify_checksum=verify_checksum,
-            force=force,
-        )
+        with client(self.pool) as c:
+            c.put(
+                item,
+                Path(local_path),
+                calculate_checksum=calculate_checksum,
+                verify_checksum=verify_checksum,
+                force=force,
+                timeout=timeout,
+                tries=tries,
+            )
 
-    def read(self) -> str:
+    def read(self, timeout=None, tries=1) -> str:
         """Get the data object from iRODS."""
         item = self._to_dict()
-        return self.client.read(item)
+        with client(self.pool) as c:
+            return c.read(item, timeout=timeout, tries=tries)
 
     def _list(self, **kwargs) -> List[dict]:
         item = self._to_dict()
-        return self.client.list(item, **kwargs)
+        with client(self.pool) as c:
+            return c.list(item, **kwargs)
 
     def _to_dict(self) -> Dict:
         return {Baton.COLL: self.path, Baton.OBJ: self.name}
@@ -656,11 +1246,11 @@ class Collection(RodsItem):
     Collection is a PathLike for the iRODS path it represents.
     """
 
-    def __init__(self, client: Baton, path: Union[PurePath, str]):
-        super().__init__(client, path)
+    def __init__(self, path: Union[PurePath, str], pool=default_pool):
+        super().__init__(path, pool=pool)
 
     def contents(
-        self, acl=False, avu=False, recurse=False
+        self, acl=False, avu=False, recurse=False, timeout=None, tries=1
     ) -> List[Union[DataObject, Collection]]:
         """Return list of the Collection contents.
 
@@ -668,14 +1258,22 @@ class Collection(RodsItem):
           acl: Include ACL information.
           avu: Include AVU (metadata) information.
           recurse: Recurse into sub-collections.
+          timeout: Operation timeout in seconds.
+          tries: Number of times to try the operation.
 
         Returns: List[Union[DataObject, Collection]]
         """
-        items = self._list(acl=acl, avu=avu, contents=True, recurse=recurse)
+        items = self._list(
+            acl=acl,
+            avu=avu,
+            contents=True,
+            recurse=recurse,
+            timeout=timeout,
+            tries=tries,
+        )
+        return [_make_rods_item(item, pool=self.pool) for item in items]
 
-        return [make_rods_item(self.client, item) for item in items]
-
-    def list(self, acl=False, avu=False) -> Collection:
+    def list(self, acl=False, avu=False, timeout=None, tries=1) -> Collection:
         """Return a new Collection representing this one.
 
         Keyword Args:
@@ -684,18 +1282,19 @@ class Collection(RodsItem):
 
         Returns: Collection
         """
-        items = self._list(acl=acl, avu=avu)
+        items = self._list(acl=acl, avu=avu, timeout=timeout, tries=tries)
         # Gets a single item
-        return make_rods_item(self.client, items.pop())
+        return _make_rods_item(items.pop(), pool=self.pool)
 
     def get(self, local_path: Union[Path, str], **kwargs):
         raise NotImplementedError()
 
-    def put(self, local_path: Union[Path, str], recurse=True):
+    def put(self, local_path: Union[Path, str], recurse=True, timeout=None, tries=1):
         raise NotImplementedError()
 
     def _list(self, **kwargs) -> List[dict]:
-        return self.client.list({Baton.COLL: self.path}, **kwargs)
+        with client(self.pool) as c:
+            return c.list({Baton.COLL: self.path}, **kwargs)
 
     def _to_dict(self):
         return {Baton.COLL: self.path}
@@ -711,319 +1310,6 @@ class Collection(RodsItem):
 
     def __repr__(self):
         return self.path.as_posix()
-
-
-def make_rods_item(client: Baton, item: Dict) -> Union[DataObject, Collection]:
-    """Create a new Collection or DataObject as appropriate for a dictionary
-    returned by a Baton.
-
-    Returns: Union[DataObject, Collection]
-    """
-    if Baton.COLL not in item.keys():
-        raise BatonError(f"{Baton.COLL} key missing from {item}")
-
-    if Baton.OBJ in item.keys():
-        return DataObject(client, PurePath(item[Baton.COLL], item[Baton.OBJ]))
-    return Collection(client, PurePath(item[Baton.COLL]))
-
-
-class Baton(AbstractContextManager):
-    """A wrapper around the baton-do client program, used for interacting with
-    iRODS."""
-
-    CLIENT = "baton-do"
-
-    AVUS = "avus"
-    ATTRIBUTE = "attribute"
-    VALUE = "value"
-    UNITS = "units"
-
-    COLL = "collection"
-    OBJ = "data_object"
-    ZONE = "zone"
-
-    ACCESS = "access"
-    OWNER = "owner"
-    LEVEL = "level"
-
-    CHMOD = "chmod"
-    LIST = "list"
-    GET = "get"
-    PUT = "put"
-    CHECKSUM = "checksum"
-    METAQUERY = "metaquery"
-
-    METAMOD = "metamod"
-    ADD = "add"
-    REM = "rem"
-
-    OP = "operation"
-    ARGS = "arguments"
-    TARGET = "target"
-
-    RESULT = "result"
-    SINGLE = "single"
-    MULTIPLE = "multiple"
-    CONTENTS = "contents"
-    DATA = "data"
-
-    ERR = "error"
-    MSG = "message"
-    CODE = "code"
-
-    def __init__(self):
-        self.proc = None
-
-    def __enter__(self):
-        self.start()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.stop()
-
-    def is_running(self) -> bool:
-        """Returns true if the client is running."""
-        return self.proc and self.proc.poll() is None
-
-    def start(self):
-        """Starts the client if it is not already running."""
-        if self.is_running():
-            log.warning(
-                "Tried to start a Baton instance that is already running",
-                pid=self.proc.pid,
-            )
-            return
-
-        self.proc = subprocess.Popen(
-            [Baton.CLIENT, "--unbuffered"],
-            bufsize=0,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        log.debug(f"Started {Baton.CLIENT} process", pid=self.proc.pid)
-
-    def stop(self):
-        """Stops the client if it is running."""
-        if not self.is_running():
-            log.warning("Tried to start a Baton instance that is not running")
-            return
-
-        self.proc.stdin.close()
-        try:
-            log.debug(f"Terminating {Baton.CLIENT} process", pid=self.proc.pid)
-            self.proc.terminate()
-            self.proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            log.error(
-                f"Failed to terminate {Baton.CLIENT} process; killing",
-                pid=self.proc.pid,
-            )
-            self.proc.kill()
-        self.proc = None
-
-    def list(
-        self,
-        item: Dict,
-        acl=False,
-        avu=False,
-        contents=False,
-        recurse=False,
-        size=False,
-        timestamp=False,
-    ) -> List[Dict]:
-        if recurse:
-            raise NotImplementedError("recurse")
-
-        result = self._execute(
-            Baton.LIST,
-            {
-                "acl": acl,
-                "avu": avu,
-                "contents": contents,
-                "size": size,
-                "timestamp": timestamp,
-            },
-            item,
-        )
-        if contents:
-            result = result[Baton.CONTENTS]
-        else:
-            result = [result]
-
-        return result
-
-    def checksum(
-        self,
-        item,
-        calculate_checksum=False,
-        recalculate_checksum=False,
-        verify_checksum=False,
-    ) -> str:
-        result = self._execute(
-            Baton.CHECKSUM,
-            {
-                "calculate": calculate_checksum,
-                "recalculate": recalculate_checksum,
-                "verify": verify_checksum,
-            },
-            item,
-        )
-        checksum = result[Baton.CHECKSUM]
-        return checksum
-
-    def meta_add(self, item: Dict):
-        self._execute(Baton.METAMOD, {Baton.OP: Baton.ADD}, item)
-
-    def meta_rem(self, item: Dict):
-        self._execute(Baton.METAMOD, {Baton.OP: Baton.REM}, item)
-
-    def meta_query(
-        self, avus: List[AVU], zone=None, collection=False, data_object=False
-    ) -> List[Union[DataObject, Collection]]:
-        args = {}
-        if collection:
-            args["collection"] = True
-        if data_object:
-            args["object"] = True
-
-        item = {Baton.AVUS: avus}
-        if zone:
-            item[Baton.COLL] = self._zone_hint_to_path(zone)
-
-        result = self._execute(Baton.METAQUERY, args, item)
-        items = [make_rods_item(self, item) for item in result]
-        items.sort()
-
-        return items
-
-    def ac_set(self, item: Dict, recurse=False):
-        self._execute(Baton.CHMOD, {"recurse": recurse}, item)
-
-    def get(
-        self, item: Dict, local_path: Path, verify_checksum=True, force=True
-    ) -> int:
-        # TODO: Note that baton does not use rcDataObjGet to get data. It streams the
-        #  file while calculating the MD5 and overwrites existing files without
-        #  warning. Therefore it is similar to using verify_checksum=True,
-        #  force=True. Maybe add an rcDataObjGet mode to benefit from parallel get?
-
-        # Let's be sure users are aware if they try to change these at the moment.
-        if not verify_checksum:
-            raise BatonError(
-                f"{Baton.CLIENT} does not support get without checksum verification"
-            )
-        if not force:
-            raise BatonError(
-                f"{Baton.CLIENT} does not support get without forced overwriting"
-            )
-
-        item["directory"] = local_path.parent
-        item["file"] = local_path.name
-
-        self._execute(
-            Baton.GET, {"save": True, "verify": verify_checksum, "force": force}, item
-        )
-        return local_path.stat().st_size
-
-    def read(self, item: Dict) -> str:
-        result = self._execute(Baton.GET, {}, item)
-        if Baton.DATA not in result:
-            raise InvalidJSONError(
-                f"Invalid result '{result}': data property was missing"
-            )
-        return result[Baton.DATA]
-
-    def put(
-        self,
-        item: Dict,
-        local_path: Path,
-        calculate_checksum=True,
-        verify_checksum=True,
-        force=True,
-    ):
-        item["directory"] = local_path.parent
-        item["file"] = local_path.name
-
-        self._execute(
-            Baton.PUT,
-            {
-                "checksum": calculate_checksum,
-                "verify": verify_checksum,
-                "force": force,
-            },
-            item,
-        )
-
-    def _execute(self, operation: str, args: Dict, item: Dict) -> Dict:
-        if not self.is_running():
-            log.debug(f"{Baton.CLIENT} is not running ... starting")
-            self.start()
-            if not self.is_running():
-                raise BatonError(f"{Baton.CLIENT} failed to start")
-
-        response = self._send(self._wrap(operation, args, item))
-        return self._unwrap(response)
-
-    @staticmethod
-    def _wrap(operation: str, args: Dict, item: Dict) -> Dict:
-        return {
-            Baton.OP: operation,
-            Baton.ARGS: args,
-            Baton.TARGET: item,
-        }
-
-    @staticmethod
-    def _unwrap(envelope: Dict) -> Dict:
-        # If there is an error report from the iRODS server in the envelope, we need to
-        # raise a RodsError
-        if Baton.ERR in envelope:
-            err = envelope[Baton.ERR]
-            if Baton.CODE not in err:
-                raise InvalidEnvelopeError("Error code was missing", envelope=envelope)
-            if Baton.MSG not in err:
-                raise InvalidEnvelopeError(
-                    "Error message was missing", envelope=envelope
-                )
-
-            raise RodsError(err[Baton.MSG], err[Baton.CODE])
-
-        if Baton.RESULT not in envelope:
-            raise InvalidEnvelopeError(
-                "Operation result property was missing", envelope=envelope
-            )
-
-        if Baton.SINGLE in envelope[Baton.RESULT]:
-            return envelope[Baton.RESULT][Baton.SINGLE]
-
-        if Baton.MULTIPLE in envelope[Baton.RESULT]:
-            return envelope[Baton.RESULT][Baton.MULTIPLE]
-
-        raise InvalidEnvelopeError(
-            "Operation result value was empty", envelope=envelope
-        )
-
-    def _send(self, envelope: Dict) -> Dict:
-        encoded = json.dumps(envelope, cls=BatonJSONEncoder)
-        log.debug("Sending", msg=encoded)
-
-        msg = bytes(encoded, "utf-8")
-        self.proc.stdin.write(msg)
-        self.proc.stdin.flush()
-
-        resp = self.proc.stdout.readline()
-
-        log.debug("Received", msg=resp)
-
-        return json.loads(resp, object_hook=as_baton)
-
-    @staticmethod
-    def _zone_hint_to_path(zone) -> str:
-        z = str(zone)
-        if z.startswith("/"):
-            return z
-
-        return "/" + z
 
 
 class BatonJSONEncoder(json.JSONEncoder):
@@ -1081,3 +1367,17 @@ def as_baton(d: Dict) -> Any:
         return AC(user, Permission[level.upper()], zone=zone)
 
     return d
+
+
+def _make_rods_item(item: Dict, pool: BatonPool) -> Union[DataObject, Collection]:
+    """Create a new Collection or DataObject as appropriate for a dictionary
+    returned by a Baton.
+
+    Returns: Union[DataObject, Collection]
+    """
+    if Baton.COLL not in item.keys():
+        raise BatonError(f"{Baton.COLL} key missing from {item}")
+
+    if Baton.OBJ in item.keys():
+        return DataObject(PurePath(item[Baton.COLL], item[Baton.OBJ]), pool=pool)
+    return Collection(PurePath(item[Baton.COLL]), pool=pool)

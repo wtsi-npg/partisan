@@ -17,11 +17,9 @@
 #
 # @author Keith James <kdj@sanger.ac.uk>
 
-import pytest
 from pytest import mark as m
 
-from partisan.exception import RodsError
-from partisan.irods import Baton, Collection, DataObject
+from partisan.irods import Baton
 
 
 @m.describe("Baton")
@@ -29,55 +27,28 @@ class TestBatonClient(object):
     @m.context("When created")
     @m.it("Is not running")
     def test_create_baton_client(self):
-        client = Baton()
-        assert not client.is_running()
+        c = Baton()
+        assert not c.is_running()
 
     @m.it("Can be started and stopped")
     def test_start_baton_client(self):
-        client = Baton()
-        client.start()
-        assert client.is_running()
-        client.stop()
-        assert not client.is_running()
+        c = Baton()
+        c.start()
+        assert c.is_running()
+        c.stop()
+        assert not c.is_running()
 
     @m.context("When stopped")
     @m.it("Can be re-started")
     def test_restart_baton_client(self, simple_collection):
-        client = Baton()
-        client.start()
-        assert client.is_running()
-        client.stop()
-        assert not client.is_running()
-        # Re-start
-        client.start()
-        assert client.is_running()
-        # Try an operation
-        coll = Collection(client, simple_collection)
-        assert coll.exists()
-        client.stop()
-
-    @m.contect("When used as a ContextManager")
-    @m.it("Starts on context entry")
-    def test_context_enter(self):
-        with Baton() as client:
-            assert client.is_running()
-
-    @m.it("Stops on context exit")
-    def test_context_exit(self):
-        c: Baton
-        with Baton() as client:
-            c = client
-
+        c = Baton()
+        c.start()
+        assert c.is_running()
+        c.stop()
         assert not c.is_running()
 
-    @m.it("Stops on a raised exception")
-    def test_context_exit(self):
-        c: Baton
-        with Baton() as client:
-            c = client
-            obj = DataObject(client, "/no/such/path")
-
-            with pytest.raises(RodsError, match=r"does not exist"):
-                obj.list()
-
+        # Re-start
+        c.start()
+        assert c.is_running()
+        c.stop()
         assert not c.is_running()
