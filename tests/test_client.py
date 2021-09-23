@@ -40,7 +40,7 @@ class TestBatonClient(object):
 
     @m.context("When stopped")
     @m.it("Can be re-started")
-    def test_restart_baton_client(self, simple_collection):
+    def test_restart_baton_client(self):
         c = Baton()
         c.start()
         assert c.is_running()
@@ -50,5 +50,22 @@ class TestBatonClient(object):
         # Re-start
         c.start()
         assert c.is_running()
+        c.stop()
+        assert not c.is_running()
+
+    @m.context("When running")
+    @m.it("Can handle a sequence of requests on one connection")
+    def test_multiple_requests(self, simple_collection):
+        c = Baton()
+        c.start()
+        assert c.is_running()
+        pid = c.pid()
+
+        c.list({Baton.COLL: simple_collection})
+        c.list({Baton.COLL: simple_collection})
+        c.list({Baton.COLL: simple_collection})
+
+        assert c.is_running()
+        assert c.pid() == pid
         c.stop()
         assert not c.is_running()

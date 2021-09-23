@@ -108,6 +108,10 @@ class Baton:
         """Returns true if the client is running."""
         return self._proc and self._proc.poll() is None
 
+    def pid(self):
+        """Returns the PID of the baton-do client process."""
+        return self._pid
+
     def start(self):
         """Starts the client if it is not already running."""
         if self.is_running():
@@ -407,8 +411,19 @@ class Baton:
         log.debug("Sending", msg=encoded)
 
         msg = bytes(encoded, "utf-8")
-        resp, _ = self._proc.communicate(msg)
+
+        # We are not using Popen.communicate here because that terminates the process
+        self._proc.stdin.write(msg)
+        self._proc.stdin.flush()
+        resp = self._proc.stdout.readline()
         log.debug("Received", msg=resp)
+
+        if self._proc.returncode is not None:
+            pid = self._proc.pid
+            raise BatonError(
+                f"{Baton.CLIENT} PID: {pid} terminated unexpectedly "
+                f"with return code {self._proc.returncode}"
+            )
 
         return json.loads(resp, object_hook=as_baton)
 
