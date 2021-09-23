@@ -39,6 +39,7 @@ from structlog import get_logger
 
 from partisan.exception import (
     BatonError,
+    BatonTimeoutError,
     InvalidEnvelopeError,
     InvalidJSONError,
     RodsError,
@@ -357,12 +358,17 @@ class Baton:
                     break
                 log.warning(f"Timed out sending", client=self, tryno=i, doc=wrapped)
 
+            if t.is_alive():
+                raise BatonTimeoutError(
+                    f"Timed out sending after {tries} tries", client=self, tryno=tries
+                )
+
         # If thread is still running because it timed out on every attempt, this will
         # block. By letting the thread run while we've released the lock, we will
         # cause ourselves problems. By setting a timeout here (1 second is arbitrary)
         # we will raise an Empty exception so that the caller can shut down this
         # client, if needed.
-        response = lifo.get(timeout=1)
+        response = lifo.get(timeout=0.1)
 
         # original version:
         # response = self._send(self._wrap(operation, args, item))
@@ -852,10 +858,10 @@ class RodsItem(PathLike):
         self.path = PurePath(path)
         self.pool = pool
 
-    def exists(self) -> bool:
+    def exists(self, timeout=None, tries=1) -> bool:
         """Return true if the item exists in iRODS."""
         try:
-            self._list()
+            self._list(timeout=timeout, tries=tries)
         except RodsError as re:
             if re.code == -310000:  # iRODS error code for path not found
                 return False

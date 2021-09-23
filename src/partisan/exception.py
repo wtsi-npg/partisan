@@ -62,3 +62,11 @@ class InvalidEnvelopeError(InvalidJSONError):
 
     def __str__(self):
         return f"<InvalidEnvelopeError: {self.message}>"
+
+
+class BatonTimeoutError(BatonError):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args)
+        self.message = args[0] if len(args) > 0 else ""
+        self.client = kwargs.get("client")
+        self.tryno = kwargs.get("tryno")
