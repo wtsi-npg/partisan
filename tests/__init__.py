@@ -20,7 +20,7 @@
 import logging
 import structlog
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.ERROR)
 
 structlog.configure(
     logger_factory=structlog.stdlib.LoggerFactory(),

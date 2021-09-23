@@ -28,12 +28,11 @@ from pathlib import PurePath
 
 import pytest
 
+from partisan.icommands import have_admin, imkdir, iput, irm, mkgroup, rmgroup
 from partisan.irods import (
     AVU,
-    Baton,
     Collection,
 )
-from partisan.icommands import have_admin, imkdir, iput, irm, mkgroup, rmgroup
 from partisan.metadata import ONTMetadata
 
 tests_have_admin = pytest.mark.skipif(
@@ -160,14 +159,3 @@ def ont_synthetic(tmp_path, baton_session):
     finally:
         irm(root_path, force=True, recurse=True)
         remove_test_groups()
-
-
-@pytest.fixture(scope="function")
-def baton_session():
-    client = Baton()
-    client.start()
-
-    try:
-        yield client
-    finally:
-        client.stop()

@@ -26,7 +26,15 @@ import pytest
 from pytest import mark as m
 
 from partisan.exception import RodsError
-from partisan.irods import AC, AVU, Baton, Collection, DataObject, Permission
+from partisan.irods import (
+    AC,
+    AVU,
+    Baton,
+    Collection,
+    DataObject,
+    Permission,
+    meta_query,
+)
 
 
 @m.describe("AC")
@@ -133,9 +141,9 @@ class TestCollection(object):
     @m.describe("Support for str path")
     @m.context("When a Collection is made from a str path")
     @m.it("Can be created")
-    def test_make_collection_str(self, simple_collection, baton_session):
+    def test_make_collection_str(self, simple_collection):
         p = PurePath(simple_collection)
-        coll = Collection(baton_session, p.as_posix())
+        coll = Collection(p.as_posix())
 
         assert coll.exists()
         assert coll.path == p
@@ -143,9 +151,9 @@ class TestCollection(object):
     @m.describe("Support for pathlib.Path")
     @m.context("When a Collection is made from a pathlib.Path")
     @m.it("Can be created")
-    def test_make_collection_pathlib(self, simple_collection, baton_session):
+    def test_make_collection_pathlib(self, simple_collection):
         p = PurePath(simple_collection)
-        coll = Collection(baton_session, p)
+        coll = Collection(p)
 
         assert coll.exists()
         assert coll.path == p
@@ -153,22 +161,21 @@ class TestCollection(object):
     @m.describe("Testing existence")
     @m.context("When a Collection exists")
     @m.it("Can be detected")
-    def test_collection_exists(self, simple_collection, baton_session):
-        p = PurePath(simple_collection)
-        assert Collection(baton_session, p).exists()
-        assert not Collection(baton_session, "/no/such/collection").exists()
+    def test_collection_exists(self, simple_collection):
+        assert Collection(PurePath(simple_collection)).exists()
+        assert not Collection("/no/such/collection").exists()
 
     @m.it("Can be listed (non-recursively)")
-    def test_list_collection(self, simple_collection, baton_session):
-        coll = Collection(baton_session, simple_collection)
-        assert coll.list() == Collection(baton_session, simple_collection)
+    def test_list_collection(self, simple_collection):
+        coll = Collection(simple_collection)
+        assert coll.list() == Collection(simple_collection)
 
-        coll = Collection(baton_session, "/no/such/collection")
+        coll = Collection("/no/such/collection")
         with pytest.raises(RodsError, match="does not exist"):
             coll.list()
 
     @m.it("Can have its contents listed")
-    def test_list_collection_contents(self, ont_gridion, baton_session):
+    def test_list_collection_contents(self, ont_gridion):
         p = PurePath(
             ont_gridion,
             "66",
@@ -176,13 +183,13 @@ class TestCollection(object):
             "20190904_1514_GA20000_FAL01979_43578c8f",
         )
 
-        coll = Collection(baton_session, p)
+        coll = Collection(p)
         contents = coll.contents()
         assert len(contents) == 11
 
     @m.it("Can have metadata added")
-    def test_meta_add_collection(self, simple_collection, baton_session):
-        coll = Collection(baton_session, simple_collection)
+    def test_meta_add_collection(self, simple_collection):
+        coll = Collection(simple_collection)
         assert coll.metadata() == []
 
         avu1 = AVU("abcde", "12345")
@@ -197,8 +204,8 @@ class TestCollection(object):
         ), "adding collection metadata is idempotent"
 
     @m.it("Can have metadata removed")
-    def test_meta_rem_collection(self, simple_collection, baton_session):
-        coll = Collection(baton_session, simple_collection)
+    def test_meta_rem_collection(self, simple_collection):
+        coll = Collection(simple_collection)
         assert coll.metadata() == []
 
         avu1 = AVU("abcde", "12345")
@@ -213,23 +220,23 @@ class TestCollection(object):
         ), "removing collection metadata is idempotent"
 
     @m.it("Can be found by its metadata")
-    def test_meta_query_collection(self, simple_collection, baton_session):
-        coll = Collection(baton_session, simple_collection)
+    def test_meta_query_collection(self, simple_collection):
+        coll = Collection(simple_collection)
 
         avu = AVU("abcde", "12345")
         coll.meta_add(avu)
         assert coll.metadata() == [avu]
 
-        found = baton_session.meta_query([avu], collection=True, zone=coll)
-        assert found == [Collection(baton_session, simple_collection)]
+        found = meta_query([avu], collection=True, zone=coll)
+        assert found == [Collection(simple_collection)]
 
 
 @m.describe("DataObject")
 class TestDataObject(object):
     @m.context("When a DataObject is made from a str path")
     @m.it("Can be created")
-    def test_make_data_object_str(self, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object.as_posix())
+    def test_make_data_object_str(self, simple_data_object):
+        obj = DataObject(simple_data_object.as_posix())
 
         assert obj.exists()
         assert obj.path == simple_data_object.parent
@@ -237,8 +244,8 @@ class TestDataObject(object):
 
     @m.context("When a DataObject is made from a pathlib.Path")
     @m.it("Can be created")
-    def test_make_data_object_pathlib(self, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object)
+    def test_make_data_object_pathlib(self, simple_data_object):
+        obj = DataObject(simple_data_object)
 
         assert obj.exists()
         assert obj.path == simple_data_object.parent
@@ -247,22 +254,22 @@ class TestDataObject(object):
     @m.describe("Operations on an existing DataObject")
     @m.context("When a DataObject exists")
     @m.it("Can be detected")
-    def test_detect_data_object(self, simple_data_object, baton_session):
-        assert DataObject(baton_session, simple_data_object).exists()
-        assert not DataObject(baton_session, "/no/such/object.txt").exists()
+    def test_detect_data_object(self, simple_data_object):
+        assert DataObject(simple_data_object).exists()
+        assert not DataObject("/no/such/object.txt").exists()
 
     @m.it("Can be listed")
-    def test_list_data_object(self, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object)
-        assert obj.list() == DataObject(baton_session, simple_data_object)
+    def test_list_data_object(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+        assert obj.list() == DataObject(simple_data_object)
 
-        obj = DataObject(baton_session, "/no/such/data_object.txt")
+        obj = DataObject("/no/such/data_object.txt")
         with pytest.raises(RodsError, match="does not exist"):
             obj.list()
 
     @m.it("Can be got from iRODS to a file")
-    def test_get_data_object(self, tmp_path, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object)
+    def test_get_data_object(self, tmp_path, simple_data_object):
+        obj = DataObject(simple_data_object)
 
         local_path = tmp_path / simple_data_object.name
         size = obj.get(local_path)
@@ -272,8 +279,8 @@ class TestDataObject(object):
         assert md5 == "39a4aa291ca849d601e4e5b8ed627a04"
 
     @m.it("Can be read from iRODS")
-    def test_read_data_object(self, tmp_path, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object)
+    def test_read_data_object(self, tmp_path, simple_data_object):
+        obj = DataObject(simple_data_object)
         contents = obj.read()
         assert (
             hashlib.md5(contents.encode()).hexdigest()
@@ -281,13 +288,13 @@ class TestDataObject(object):
         )
 
     @m.it("Has a checksum")
-    def test_get_checksum(self, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object)
+    def test_get_checksum(self, simple_data_object):
+        obj = DataObject(simple_data_object)
         assert obj.checksum() == "39a4aa291ca849d601e4e5b8ed627a04"
 
     @m.it("Can have its checksum verified as good")
-    def test_verify_checksum_good(self, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object)
+    def test_verify_checksum_good(self, simple_data_object):
+        obj = DataObject(simple_data_object)
 
         # Note that in iRODS >= 4.2.10, this always passes, even if the remote file
         # is the wrong size of has a mismatching checksum, because of this iRODS bug:
@@ -295,8 +302,8 @@ class TestDataObject(object):
         assert obj.checksum(verify_checksum=True)
 
     @m.it("Can have its checksum verified as bad")
-    def test_verify_checksum_bad(self, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object)
+    def test_verify_checksum_bad(self, simple_data_object):
+        obj = DataObject(simple_data_object)
 
         # We are patching json.loads object hook for decoding baton.py JSON
         decoded = {
@@ -317,8 +324,8 @@ class TestDataObject(object):
                 assert info.value.code == decoded[Baton.ERR][Baton.CODE]
 
     @m.it("Can be overwritten")
-    def test_overwrite_data_object(self, tmp_path, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object)
+    def test_overwrite_data_object(self, tmp_path, simple_data_object):
+        obj = DataObject(simple_data_object)
 
         local_path = tmp_path / simple_data_object.name
         with open(local_path, "w") as f:
@@ -329,8 +336,8 @@ class TestDataObject(object):
         assert obj.checksum() == "d8e8fca2dc0f896fd7cb4cb0031ba249"
 
     @m.it("Can add have metadata added")
-    def test_meta_add_data_object(self, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object)
+    def test_meta_add_data_object(self, simple_data_object):
+        obj = DataObject(simple_data_object)
         assert obj.metadata() == []
 
         avu1 = AVU("abcde", "12345")
@@ -345,8 +352,8 @@ class TestDataObject(object):
         ), "adding data object metadata is idempotent"
 
     @m.it("Can have metadata removed")
-    def test_meta_rem_data_object(self, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object)
+    def test_meta_rem_data_object(self, simple_data_object):
+        obj = DataObject(simple_data_object)
         assert obj.metadata() == []
 
         avu1 = AVU("abcde", "12345")
@@ -361,8 +368,8 @@ class TestDataObject(object):
         ), "removing data object metadata is idempotent"
 
     @m.it("Can have metadata replaced")
-    def test_meta_rep_data_object(self, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object)
+    def test_meta_rep_data_object(self, simple_data_object):
+        obj = DataObject(simple_data_object)
         assert obj.metadata() == []
 
         avu1 = AVU("abcde", "12345")
@@ -400,21 +407,21 @@ class TestDataObject(object):
         assert obj.metadata() == expected
 
     @m.it("Can be found by its metadata")
-    def test_meta_query_data_object(self, simple_data_object, baton_session):
-        obj = DataObject(baton_session, simple_data_object)
+    def test_meta_query_data_object(self, simple_data_object):
+        obj = DataObject(simple_data_object)
 
         avu = AVU("abcde", "12345")
         obj.meta_add(avu)
         assert obj.metadata() == [avu]
 
-        found = baton_session.meta_query([avu], data_object=True, zone=obj.path)
-        assert found == [DataObject(baton_session, simple_data_object)]
+        found = meta_query([avu], data_object=True, zone=obj.path)
+        assert found == [DataObject(simple_data_object)]
 
     @m.it("Can have access controls added")
-    def test_add_ac_data_object(self, simple_data_object, baton_session):
+    def test_add_ac_data_object(self, simple_data_object):
         zone = "testZone"
         user = "irods"
-        obj = DataObject(baton_session, simple_data_object)
+        obj = DataObject(simple_data_object)
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
 
         assert (
@@ -429,10 +436,10 @@ class TestDataObject(object):
         ]
 
     @m.it("Can have access controls removed")
-    def test_rem_ac_data_object(self, simple_data_object, baton_session):
+    def test_rem_ac_data_object(self, simple_data_object):
         zone = "testZone"
         user = "irods"
-        obj = DataObject(baton_session, simple_data_object)
+        obj = DataObject(simple_data_object)
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
 
         assert (
