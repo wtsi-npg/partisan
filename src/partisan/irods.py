@@ -100,7 +100,6 @@ class Baton:
     def __init__(self):
         self._proc = None
         self._pid = None
-        self._mutex = threading.Lock()  # For interaction with the client process
 
     def __str__(self):
         return f"<Baton {Baton.CLIENT}, running: {self.is_running()}, PID: {self._pid}>"
@@ -123,14 +122,27 @@ class Baton:
             return
 
         self._proc = subprocess.Popen(
-            [Baton.CLIENT, "--unbuffered"],
+            [Baton.CLIENT, "--unbuffered", "--no-error", "--silent"],
             bufsize=0,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+
         self._pid = self._proc.pid
         log.debug(f"Started {Baton.CLIENT} process", pid=self._pid)
+
+        def stderr_reader(err):
+            for line in iter(err.readline, b""):
+                log.error(
+                    f"{Baton.CLIENT} STDERR",
+                    pid=self._pid,
+                    msg=line.decode("utf-8").rstrip(),
+                )
+
+        t = Thread(target=stderr_reader, args=(self._proc.stderr,))
+        t.daemon = True
+        t.start()
 
     def stop(self):
         """Stops the client if it is running."""
@@ -348,30 +360,26 @@ class Baton:
         # operation type. A "put" operation of a multi-GiB file may legitimately take
         # hours, a metadata change may not.
         lifo = LifoQueue(maxsize=1)
-        with self._mutex:
-            t = Thread(target=lambda q, w: q.put(self._send(w)), args=(lifo, wrapped))
-            t.start()
 
-            for i in range(tries):
-                t.join(timeout=timeout)
-                if not t.is_alive():
-                    break
-                log.warning(f"Timed out sending", client=self, tryno=i, doc=wrapped)
+        t = Thread(target=lambda q, w: q.put(self._send(w)), args=(lifo, wrapped))
+        t.start()
 
-            if t.is_alive():
-                raise BatonTimeoutError(
-                    f"Timed out sending after {tries} tries", client=self, tryno=tries
-                )
+        for i in range(tries):
+            t.join(timeout=timeout)
+            if not t.is_alive():
+                break
+            log.warning(f"Timed out sending", client=self, tryno=i, doc=wrapped)
 
-        # If thread is still running because it timed out on every attempt, this will
-        # block. By letting the thread run while we've released the lock, we will
-        # cause ourselves problems. By setting a timeout here (1 second is arbitrary)
-        # we will raise an Empty exception so that the caller can shut down this
-        # client, if needed.
+            # Still alive after all the tries?
+        if t.is_alive():
+            self.stop()
+            raise BatonTimeoutError(
+                "Exhausted all timeouts, stopping client", client=self, tryno=tries
+            )
+
+        # By setting a timeout here (0.1 second is arbitrary) we will raise an Empty
+        # exception. This shouldn't happen because timeouts are dealt with above.
         response = lifo.get(timeout=0.1)
-
-        # original version:
-        # response = self._send(self._wrap(operation, args, item))
         return self._unwrap(response)
 
     @staticmethod
@@ -425,9 +433,8 @@ class Baton:
         log.debug("Received", msg=resp)
 
         if self._proc.returncode is not None:
-            pid = self._proc.pid
             raise BatonError(
-                f"{Baton.CLIENT} PID: {pid} terminated unexpectedly "
+                f"{Baton.CLIENT} PID: {self._proc.pid} terminated unexpectedly "
                 f"with return code {self._proc.returncode}"
             )
 
