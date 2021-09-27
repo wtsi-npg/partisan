@@ -29,11 +29,7 @@ from pathlib import PurePath
 import pytest
 
 from partisan.icommands import have_admin, imkdir, iput, irm, mkgroup, rmgroup
-from partisan.irods import (
-    AVU,
-    Collection,
-)
-from partisan.metadata import ONTMetadata
+
 
 tests_have_admin = pytest.mark.skipif(
     not have_admin(), reason="tests do not have iRODS admin access"
