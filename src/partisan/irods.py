@@ -133,6 +133,8 @@ class Baton:
         log.debug(f"Started {Baton.CLIENT} process", pid=self._pid)
 
         def stderr_reader(err):
+            """Report anything from client STDERR to the error log. There should be
+            virtually no traffic here."""
             for line in iter(err.readline, b""):
                 log.error(
                     f"{Baton.CLIENT} STDERR",
@@ -168,7 +170,6 @@ class Baton:
         acl=False,
         avu=False,
         contents=False,
-        recurse=False,
         size=False,
         timestamp=False,
         timeout=None,
@@ -182,15 +183,11 @@ class Baton:
             acl: Include ACL information in the result
             avu: Include AVU information in the result
             contents: Include contents in the result (for a collection item)
-            recurse: Recurse into collections (for a collection item)
             size: Include size information in the result (for a data object)
             timestamp: Include timestamp information in the result (for a data object)
             timeout: Operation timeout
             tries: Number of times to try the operation
         """
-        if recurse:
-            raise NotImplementedError("recurse")
-
         result = self._execute(
             Baton.LIST,
             {
@@ -865,6 +862,14 @@ class RodsItem(PathLike):
         self.path = PurePath(path)
         self.pool = pool
 
+    def __lt__(self, other):
+        if isinstance(self, Collection) and isinstance(other, DataObject):
+            return True
+        if isinstance(self, DataObject) and isinstance(other, Collection):
+            return False
+
+        return self.path < other.path
+
     def exists(self, timeout=None, tries=1) -> bool:
         """Return true if the item exists in iRODS."""
         try:
@@ -1295,11 +1300,32 @@ class Collection(RodsItem):
             acl=acl,
             avu=avu,
             contents=True,
-            recurse=recurse,
             timeout=timeout,
             tries=tries,
         )
-        return [_make_rods_item(item, pool=self.pool) for item in items]
+
+        contents = [_make_rods_item(item, pool=self.pool) for item in items]
+
+        collect = []
+        if recurse:
+            for elt in contents:
+                elt.path = self.path / elt.path  # Make an absolute path
+                collect.append(elt)
+
+                if isinstance(elt, Collection):
+                    collect.extend(
+                        elt.contents(
+                            acl=acl,
+                            avu=avu,
+                            recurse=recurse,
+                            timeout=timeout,
+                            tries=tries,
+                        )
+                    )
+        else:
+            collect = contents
+
+        return sorted(collect)
 
     def list(self, acl=False, avu=False, timeout=None, tries=1) -> Collection:
         """Return a new Collection representing this one.
