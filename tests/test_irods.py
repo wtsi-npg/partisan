@@ -18,6 +18,7 @@
 # @author Keith James <kdj@sanger.ac.uk>
 
 import hashlib
+import os.path
 from datetime import datetime
 from pathlib import PurePath
 from unittest.mock import patch
@@ -183,9 +184,78 @@ class TestCollection(object):
             "20190904_1514_GA20000_FAL01979_43578c8f",
         )
 
-        coll = Collection(p)
-        contents = coll.contents()
-        assert len(contents) == 11
+        contents = Collection(p).contents()
+        all_paths = [c.path.as_posix() for c in contents]
+        common_root = PurePath(os.path.commonpath(all_paths))
+
+        def relative(path):
+            return PurePath(path).relative_to(common_root).as_posix()
+
+        colls = filter(lambda x: isinstance(x, Collection), contents)
+        assert [relative(c) for c in colls] == [
+            "fast5_fail",
+            "fast5_pass",
+            "fastq_fail",
+            "fastq_pass",
+        ]
+
+        objs = filter(lambda x: isinstance(x, DataObject), contents)
+        assert [relative(o) for o in objs] == [
+            "GXB02004_20190904_151413_FAL01979_gridion_sequencing_run_DN585561I_A1_sequencing_summary.txt",
+            "duty_time.csv",
+            "final_report.txt.gz",
+            "final_summary.txt",
+            "report.md",
+            "report.pdf",
+            "throughput.csv",
+        ]
+
+    @m.it("Can have its contents listed recursively")
+    def test_list_collection_contents_recurse(self, ont_gridion):
+        p = PurePath(
+            ont_gridion,
+            "66",
+            "DN585561I_A1",
+            "20190904_1514_GA20000_FAL01979_43578c8f",
+        )
+        contents = Collection(p).contents(recurse=True)
+
+        all_paths = [c.path.as_posix() for c in contents]
+        common_root = PurePath(os.path.commonpath(all_paths))
+
+        def relative(path):
+            return PurePath(path).relative_to(common_root).as_posix()
+
+        colls = filter(lambda x: isinstance(x, Collection), contents)
+        assert [relative(c) for c in colls] == [
+            "fast5_fail",
+            "fast5_pass",
+            "fastq_fail",
+            "fastq_pass",
+        ]
+
+        objs = filter(lambda x: isinstance(x, DataObject), contents)
+        assert [relative(o) for o in objs] == [
+            "GXB02004_20190904_151413_FAL01979_gridion_sequencing_run_DN585561I_A1_sequencing_summary.txt",
+            "duty_time.csv",
+            "final_report.txt.gz",
+            "final_summary.txt",
+            "report.md",
+            "report.pdf",
+            "throughput.csv",
+            "fast5_fail/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_1.fast5",
+            "fast5_fail/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_2.fast5",
+            "fast5_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_0.fast5",
+            "fast5_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_1.fast5",
+            "fast5_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_2.fast5",
+            "fast5_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_3.fast5",
+            "fastq_fail/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_1.fastq",
+            "fastq_fail/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_2.fastq",
+            "fastq_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_1.fastq",
+            "fastq_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_2.fastq",
+            "fastq_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_3.fastq",
+            "fastq_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_4.fastq",
+        ]
 
     @m.it("Can have metadata added")
     def test_meta_add_collection(self, simple_collection):
