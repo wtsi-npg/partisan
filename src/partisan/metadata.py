@@ -49,9 +49,17 @@ def with_namespace(ns: str):
     return WithNamespace
 
 
+class AsValueEnum(Enum):
+    """ "An Enum whose member representation is equal to their value attribute."""
+
+    def __repr__(self):
+        return self.value
+
+
 @unique
-class DublinCore(Enum, metaclass=with_namespace("dcterms")):
-    """Dublin Core metadata."""
+class DublinCore(AsValueEnum, metaclass=with_namespace("dcterms")):
+    """Dublin Core metadata. See
+    https://dublincore.org/specifications/dublin-core/dcmi-terms/"""
 
     AUDIENCE = "audience"
     CREATED = "created"
@@ -60,38 +68,3 @@ class DublinCore(Enum, metaclass=with_namespace("dcterms")):
     MODIFIED = "modified"
     PUBLISHER = "publisher"
     TITLE = "title"
-
-
-@unique
-class SampleMetadata(Enum):
-    """SequenceScape Sample metadata."""
-
-    SAMPLE_ACCESSION_NUMBER = "sample_accession_number"
-    SAMPLE_COHORT = "sample_cohort"
-    SAMPLE_COMMON_NAME = "sample_common_name"
-    SAMPLE_CONSENT = "sample_consent"
-    SAMPLE_CONSENT_WITHDRAWN = "sample_consent_withdrawn"
-    SAMPLE_CONTROL = "sample_control"
-    SAMPLE_DONOR_ID = "sample_donor_id"
-    SAMPLE_ID = "sample_id"
-    SAMPLE_NAME = "sample"
-    SAMPLE_PUBLIC_NAME = "sample_public_name"
-    SAMPLE_SUPPLIER_NAME = "sample_supplier_name"
-
-
-@unique
-class StudyMetadata(Enum):
-    """SequenceScape Study metadata."""
-
-    STUDY_ACCESSION_NUMBER = "study_accession_number"
-    STUDY_ID = "study_id"
-    STUDY_NAME = "study"
-    STUDY_TITLE = "study_title"
-
-
-@unique
-class ONTMetadata(Enum, metaclass=with_namespace("ont")):
-    """Oxford Nanopore platform metadata"""
-
-    EXPERIMENT_NAME = "experiment_name"
-    INSTRUMENT_SLOT = "instrument_slot"
