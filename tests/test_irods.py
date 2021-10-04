@@ -34,7 +34,7 @@ from partisan.irods import (
     Collection,
     DataObject,
     Permission,
-    meta_query,
+    query_metadata,
 )
 
 
@@ -265,12 +265,12 @@ class TestCollection(object):
         avu1 = AVU("abcde", "12345")
         avu2 = AVU("vwxyz", "567890")
 
-        assert coll.meta_add(avu1, avu2) == 2
+        assert coll.add_metadata(avu1, avu2) == 2
         assert avu1 in coll.metadata()
         assert avu2 in coll.metadata()
 
         assert (
-            coll.meta_add(avu1, avu2) == 0
+            coll.add_metadata(avu1, avu2) == 0
         ), "adding collection metadata is idempotent"
 
     @m.it("Can have metadata removed")
@@ -280,13 +280,13 @@ class TestCollection(object):
 
         avu1 = AVU("abcde", "12345")
         avu2 = AVU("vwxyz", "567890")
-        coll.meta_add(avu1, avu2)
+        coll.add_metadata(avu1, avu2)
 
-        assert coll.meta_remove(avu1, avu2) == 2
+        assert coll.remove_metadata(avu1, avu2) == 2
         assert avu1 not in coll.metadata()
         assert avu2 not in coll.metadata()
         assert (
-            coll.meta_remove(avu1, avu2) == 0
+            coll.remove_metadata(avu1, avu2) == 0
         ), "removing collection metadata is idempotent"
 
     @m.it("Can be found by its metadata")
@@ -294,10 +294,10 @@ class TestCollection(object):
         coll = Collection(simple_collection)
 
         avu = AVU("abcde", "12345")
-        coll.meta_add(avu)
+        coll.add_metadata(avu)
         assert coll.metadata() == [avu]
 
-        found = meta_query([avu], collection=True, zone=coll)
+        found = query_metadata([avu], collection=True, zone=coll)
         assert found == [Collection(simple_collection)]
 
 
@@ -413,12 +413,12 @@ class TestDataObject(object):
         avu1 = AVU("abcde", "12345")
         avu2 = AVU("vwxyz", "567890")
 
-        obj.meta_add(avu1, avu2)
+        obj.add_metadata(avu1, avu2)
         assert avu1 in obj.metadata()
         assert avu2 in obj.metadata()
 
         assert (
-            obj.meta_add(avu1, avu2) == 0
+            obj.add_metadata(avu1, avu2) == 0
         ), "adding data object metadata is idempotent"
 
     @m.it("Can have metadata removed")
@@ -428,13 +428,13 @@ class TestDataObject(object):
 
         avu1 = AVU("abcde", "12345")
         avu2 = AVU("vwxyz", "567890")
-        obj.meta_add(avu1, avu2)
+        obj.add_metadata(avu1, avu2)
 
-        assert obj.meta_remove(avu1, avu2) == 2
+        assert obj.remove_metadata(avu1, avu2) == 2
         assert avu1 not in obj.metadata()
         assert avu2 not in obj.metadata()
         assert (
-            obj.meta_remove(avu1, avu2) == 0
+            obj.remove_metadata(avu1, avu2) == 0
         ), "removing data object metadata is idempotent"
 
     @m.it("Can have metadata replaced")
@@ -444,28 +444,28 @@ class TestDataObject(object):
 
         avu1 = AVU("abcde", "12345")
         avu2 = AVU("vwxyz", "567890")
-        obj.meta_add(avu1, avu2)
+        obj.add_metadata(avu1, avu2)
 
-        assert obj.meta_supersede(avu1, avu2) == (
+        assert obj.supersede_metadata(avu1, avu2) == (
             0,
             0,
         ), "nothing is replaced when new all AVUs == all old AVUs"
         assert obj.metadata() == [avu1, avu2]
 
-        assert obj.meta_supersede(avu1) == (
+        assert obj.supersede_metadata(avu1) == (
             0,
             0,
         ), "nothing is replaced when one new AVU is in the AVUs"
         assert obj.metadata() == [avu1, avu2]
 
         avu3 = AVU("abcde", "88888")
-        obj.meta_add(avu3)
+        obj.add_metadata(avu3)
 
         # Replace avu1, avu3 with avu4, avu5 (leaving avu2 in place)
         avu4 = AVU("abcde", "99999")
         avu5 = AVU("abcde", "00000")
         date = datetime.utcnow()
-        assert obj.meta_supersede(avu4, avu5, history=True, history_date=date) == (
+        assert obj.supersede_metadata(avu4, avu5, history=True, history_date=date) == (
             2,
             3,
         ), "AVUs sharing an attribute with a new AVU are replaced"
@@ -481,10 +481,10 @@ class TestDataObject(object):
         obj = DataObject(simple_data_object)
 
         avu = AVU("abcde", "12345")
-        obj.meta_add(avu)
+        obj.add_metadata(avu)
         assert obj.metadata() == [avu]
 
-        found = meta_query([avu], data_object=True, zone=obj.path)
+        found = query_metadata([avu], data_object=True, zone=obj.path)
         assert found == [DataObject(simple_data_object)]
 
     @m.it("Can have access controls added")
@@ -495,11 +495,11 @@ class TestDataObject(object):
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
 
         assert (
-            obj.ac_add(AC(user, Permission.OWN, zone=zone)) == 0
+            obj.add_permissions(AC(user, Permission.OWN, zone=zone)) == 0
         ), "nothing is replaced when new ACL == all old ACL"
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
 
-        assert obj.ac_add(AC("public", Permission.READ, zone=zone)) == 1
+        assert obj.add_permissions(AC("public", Permission.READ, zone=zone)) == 1
         assert obj.acl() == [
             AC(user, Permission.OWN, zone=zone),
             AC("public", Permission.READ, zone=zone),
@@ -513,15 +513,15 @@ class TestDataObject(object):
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
 
         assert (
-            obj.ac_rem(AC("public", Permission.READ, zone=zone)) == 0
+            obj.remove_permissions(AC("public", Permission.READ, zone=zone)) == 0
         ), "nothing is removed when the access control does not exist"
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
 
-        assert obj.ac_add(AC("public", Permission.READ, zone=zone)) == 1
+        assert obj.add_permissions(AC("public", Permission.READ, zone=zone)) == 1
         assert obj.acl() == [
             AC(user, Permission.OWN, zone=zone),
             AC("public", Permission.READ, zone=zone),
         ]
 
-        assert obj.ac_rem(AC("public", Permission.READ, zone=zone)) == 1
+        assert obj.remove_permissions(AC("public", Permission.READ, zone=zone)) == 1
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]

@@ -231,17 +231,17 @@ class Baton:
         checksum = result[Baton.CHECKSUM]
         return checksum
 
-    def meta_add(self, item: Dict, timeout=None, tries=1):
+    def add_metadata(self, item: Dict, timeout=None, tries=1):
         self._execute(
             Baton.METAMOD, {Baton.OP: Baton.ADD}, item, timeout=timeout, tries=tries
         )
 
-    def meta_rem(self, item: Dict, timeout=None, tries=1):
+    def remove_metadata(self, item: Dict, timeout=None, tries=1):
         self._execute(
             Baton.METAMOD, {Baton.OP: Baton.REM}, item, timeout=timeout, tries=tries
         )
 
-    def meta_query(
+    def query_metadata(
         self,
         avus: List[AVU],
         zone=None,
@@ -262,7 +262,7 @@ class Baton:
 
         return self._execute(Baton.METAQUERY, args, item, timeout=timeout, tries=tries)
 
-    def ac_set(self, item: Dict, recurse=False, timeout=None, tries=1):
+    def set_permission(self, item: Dict, recurse=False, timeout=None, tries=1):
         self._execute(
             Baton.CHMOD, {"recurse": recurse}, item, timeout=timeout, tries=tries
         )
@@ -561,7 +561,7 @@ def _default_pool_init() -> BatonPool:
 default_pool: Annotated[BatonPool, "The default client pool"] = _default_pool_init()
 
 
-def meta_query(
+def query_metadata(
     avus: List[AVU],
     zone=None,
     collection=False,
@@ -571,7 +571,7 @@ def meta_query(
     tries=1,
 ) -> List[Union[DataObject, Collection]]:
     with client(pool) as c:
-        result = c.meta_query(
+        result = c.query_metadata(
             avus,
             zone=zone,
             collection=collection,
@@ -871,7 +871,12 @@ class RodsItem(PathLike):
         return self.path < other.path
 
     def exists(self, timeout=None, tries=1) -> bool:
-        """Return true if the item exists in iRODS."""
+        """Return true if the item exists in iRODS.
+
+        Keyword Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+        """
         try:
             self._list(timeout=timeout, tries=tries)
         except RodsError as re:
@@ -879,7 +884,7 @@ class RodsItem(PathLike):
                 return False
         return True
 
-    def meta_add(self, *avus: Union[AVU, Tuple[AVU]], timeout=None, tries=1) -> int:
+    def add_metadata(self, *avus: Union[AVU, Tuple[AVU]], timeout=None, tries=1) -> int:
         """Add AVUs to the item's metadata, if they are not already present.
         Return the number of AVUs added.
 
@@ -899,11 +904,13 @@ class RodsItem(PathLike):
             item = self._to_dict()
             item[Baton.AVUS] = to_add
             with client(self.pool) as c:
-                c.meta_add(item, timeout=timeout, tries=tries)
+                c.add_metadata(item, timeout=timeout, tries=tries)
 
         return len(to_add)
 
-    def meta_remove(self, *avus: Union[AVU, Tuple[AVU]], timeout=None, tries=1) -> int:
+    def remove_metadata(
+        self, *avus: Union[AVU, Tuple[AVU]], timeout=None, tries=1
+    ) -> int:
         """Remove AVUs from the item's metadata, if they are present.
         Return the number of AVUs removed.
 
@@ -923,11 +930,11 @@ class RodsItem(PathLike):
             item = self._to_dict()
             item[Baton.AVUS] = to_remove
             with client(self.pool) as c:
-                c.meta_rem(item, timeout=timeout, tries=tries)
+                c.remove_metadata(item, timeout=timeout, tries=tries)
 
         return len(to_remove)
 
-    def meta_supersede(
+    def supersede_metadata(
         self,
         *avus: Union[AVU, Tuple[AVU]],
         history=False,
@@ -971,7 +978,7 @@ class RodsItem(PathLike):
             item = self._to_dict()
             item[Baton.AVUS] = to_remove
             with client(self.pool) as c:
-                c.meta_rem(item, timeout=timeout, tries=tries)
+                c.remove_metadata(item, timeout=timeout, tries=tries)
 
         to_add = sorted(set(avus).difference(current))
         if history:
@@ -985,11 +992,11 @@ class RodsItem(PathLike):
             item = self._to_dict()
             item[Baton.AVUS] = to_add
             with client(self.pool) as c:
-                c.meta_add(item, timeout=timeout, tries=tries)
+                c.add_metadata(item, timeout=timeout, tries=tries)
 
         return len(to_remove), len(to_add)
 
-    def ac_add(
+    def add_permissions(
         self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
     ) -> int:
         """Add access controls to the item. Return the number of access
@@ -1012,11 +1019,11 @@ class RodsItem(PathLike):
             item = self._to_dict()
             item[Baton.ACCESS] = to_add
             with client(self.pool) as c:
-                c.ac_set(item, recurse=recurse, timeout=timeout, tries=tries)
+                c.set_permission(item, recurse=recurse, timeout=timeout, tries=tries)
 
         return len(to_add)
 
-    def ac_rem(
+    def remove_permissions(
         self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
     ) -> int:
         """Remove access controls from the item. Return the number of access
@@ -1044,11 +1051,11 @@ class RodsItem(PathLike):
             item = self._to_dict()
             item[Baton.ACCESS] = to_remove
             with client(self.pool) as c:
-                c.ac_set(item, recurse=recurse, timeout=timeout, tries=tries)
+                c.set_permission(item, recurse=recurse, timeout=timeout, tries=tries)
 
         return len(to_remove)
 
-    def ac_supersede(
+    def supersede_permissions(
         self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
     ) -> Tuple[int, int]:
         """Remove all access controls from the item, replacing them with the
@@ -1078,7 +1085,7 @@ class RodsItem(PathLike):
             item = self._to_dict()
             item[Baton.ACCESS] = to_remove
             with client(self.pool) as c:
-                c.ac_set(item, recurse=recurse, timeout=timeout, tries=tries)
+                c.set_permission(item, recurse=recurse, timeout=timeout, tries=tries)
 
         to_add = sorted(set(acs).difference(current))
         if to_add:
@@ -1086,7 +1093,7 @@ class RodsItem(PathLike):
             item = self._to_dict()
             item[Baton.ACCESS] = to_add
             with client(self.pool) as c:
-                c.ac_set(item, recurse=recurse, timeout=timeout, tries=tries)
+                c.set_permission(item, recurse=recurse, timeout=timeout, tries=tries)
 
         return len(to_remove), len(to_add)
 
@@ -1105,14 +1112,26 @@ class RodsItem(PathLike):
 
         return sorted(item[Baton.AVUS])
 
-    def acl(self, timeout=None, tries=1) -> List[AC]:
-        """Return the item's Access Control List (ACL).
+    def permissions(self, timeout=None, tries=1) -> List[AC]:
+        """Return the item's Access Control List (ACL). Synonym for acl().
 
         Keyword Args:
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: List[AC]"""
+        Returns: List[AC]
+        """
+        return self.acl(timeout=timeout, tries=tries)
+
+    def acl(self, timeout=None, tries=1) -> List[AC]:
+        """Return the item's Access Control List (ACL). Synonym for permissions().
+
+        Keyword Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: List[AC]
+        """
         item = self._list(acl=True, timeout=timeout, tries=tries).pop()
         if Baton.ACCESS not in item.keys():
             raise BatonError(f"{Baton.ACCESS} key missing from {item}")
@@ -1200,7 +1219,15 @@ class DataObject(RodsItem):
     def get(
         self, local_path: Union[Path, str], verify_checksum=True, timeout=None, tries=1
     ) -> int:
-        """Get the data object from iRODS"""
+        """Get the data object from iRODS and save to a local file.
+
+        Args:
+            local_path: The local path of a file to be created.
+        Keyword Args:
+            verify_checksum: Verify the local checksum against the remote checksum.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+        """
         item = self._to_dict()
         with client(self.pool) as c:
             return c.get(
@@ -1247,7 +1274,15 @@ class DataObject(RodsItem):
             )
 
     def read(self, timeout=None, tries=1) -> str:
-        """Get the data object from iRODS."""
+        """Read the data object from iRODS into a string. This operation is supported
+        for data objects containing UTF-8 text.
+
+        Keyword Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: str
+        """
         item = self._to_dict()
         with client(self.pool) as c:
             return c.read(item, timeout=timeout, tries=tries)
