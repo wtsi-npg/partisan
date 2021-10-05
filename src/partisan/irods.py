@@ -568,14 +568,30 @@ default_pool: Annotated[BatonPool, "The default client pool"] = _default_pool_in
 
 
 def query_metadata(
-    avus: List[AVU],
+    *avus: Union[AVU, Tuple[AVU]],
     zone=None,
-    collection=False,
-    data_object=False,
-    pool=default_pool,
+    collection=True,
+    data_object=True,
     timeout=None,
     tries=1,
+    pool=default_pool,
 ) -> List[Union[DataObject, Collection]]:
+    """
+    Query all metadata in iRODS (i.e. both on collections and data objects)
+
+    Args:
+        *avus: AVUs to query.
+    Keyword Args
+        zone: Zone hint for the query. Defaults to None (query the current zone).
+        collection: Query the collection namespace. Defaults to True.
+        data_object: Query the data object namespace. Defaults to True.
+        timeout: Operation timeout in seconds.
+        tries: Number of times to try the operation.
+        pool: Client pool to use. If omitted, the default pool is used.
+
+    Returns: List[Union[DataObject, Collection]]
+
+    """
     with client(pool) as c:
         result = c.query_metadata(
             avus,
@@ -1172,6 +1188,44 @@ class DataObject(RodsItem):
         super().__init__(PurePath(remote_path).parent, pool=pool)
         self.name = PurePath(remote_path).name
 
+    @classmethod
+    def query_metadata(
+        cls,
+        *avus: Union[AVU, Tuple[AVU]],
+        zone=None,
+        timeout=None,
+        tries=1,
+        pool=default_pool,
+    ):
+        """
+        Query data object metadata in iRODS.
+
+        Args:
+            *avus: AVUs to query.
+        Keyword Args
+            zone: Zone hint for the query. Defaults to None (query the current zone).
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+            pool: Client pool to use. If omitted, the default pool is used.
+
+        Returns: List[Union[DataObject, Collection]]
+
+        """
+
+        with client(pool) as c:
+            items = c.query_metadata(
+                avus,
+                zone=zone,
+                collection=False,
+                data_object=True,
+                timeout=timeout,
+                tries=tries,
+            )
+
+        objs = [_make_rods_item(item, pool=pool) for item in items]
+        objs.sort()
+        return objs
+
     def list(self, timeout=None, tries=1) -> DataObject:
         """Return a new DataObject representing this one.
 
@@ -1319,6 +1373,29 @@ class Collection(RodsItem):
 
     Collection is a PathLike for the iRODS path it represents.
     """
+
+    @classmethod
+    def query_metadata(
+        cls,
+        *avus: Union[AVU, Tuple[AVU]],
+        zone=None,
+        timeout=None,
+        tries=1,
+        pool=default_pool,
+    ):
+        with client(pool) as c:
+            items = c.query_metadata(
+                avus,
+                zone=zone,
+                collection=True,
+                data_object=False,
+                timeout=timeout,
+                tries=tries,
+            )
+
+        colls = [_make_rods_item(item, pool=pool) for item in items]
+        colls.sort()
+        return colls
 
     def __init__(self, path: Union[PurePath, str], pool=default_pool):
         super().__init__(path, pool=pool)

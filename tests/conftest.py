@@ -29,7 +29,7 @@ from pathlib import PurePath
 import pytest
 
 from partisan.icommands import have_admin, imkdir, iput, irm, mkgroup, rmgroup
-
+from partisan.irods import AVU, Collection, DataObject
 
 tests_have_admin = pytest.mark.skipif(
     not have_admin(), reason="tests do not have iRODS admin access"
@@ -71,6 +71,21 @@ def simple_collection(tmp_path):
 
 
 @pytest.fixture(scope="function")
+def annotated_collection(simple_collection):
+    """A fixture providing an annotated, empty collection"""
+
+    coll = Collection(simple_collection)
+    coll.add_metadata(
+        AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
+    )
+
+    try:
+        yield simple_collection
+    finally:
+        irm(simple_collection, force=True, recurse=True)
+
+
+@pytest.fixture(scope="function")
 def simple_data_object(tmp_path):
     """A fixture providing a collection containing a single data object containing
     UTF-8 data."""
@@ -84,6 +99,22 @@ def simple_data_object(tmp_path):
         yield obj_path
     finally:
         irm(root_path, force=True, recurse=True)
+
+
+@pytest.fixture(scope="function")
+def annotated_data_object(simple_data_object):
+    """A fixture providing a collection containing a single, annotated data object
+    containing UTF-8 data."""
+
+    obj = DataObject(simple_data_object)
+    obj.add_metadata(
+        AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
+    )
+
+    try:
+        yield simple_data_object
+    finally:
+        irm(simple_data_object, force=True, recurse=True)
 
 
 @pytest.fixture(scope="function")

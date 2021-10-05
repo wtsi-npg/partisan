@@ -297,7 +297,7 @@ class TestCollection(object):
         coll.add_metadata(avu)
         assert coll.metadata() == [avu]
 
-        found = query_metadata([avu], collection=True, zone=coll)
+        found = query_metadata(avu, collection=True, zone=coll)
         assert found == [Collection(simple_collection)]
 
     @m.context("When a Collection does not exist")
@@ -433,7 +433,7 @@ class TestDataObject(object):
         assert obj.checksum() == "d8e8fca2dc0f896fd7cb4cb0031ba249"
 
     @m.it("Can add have metadata added")
-    def test_meta_add_data_object(self, simple_data_object):
+    def test_add_meta_data_object(self, simple_data_object):
         obj = DataObject(simple_data_object)
         assert obj.metadata() == []
 
@@ -449,7 +449,7 @@ class TestDataObject(object):
         ), "adding data object metadata is idempotent"
 
     @m.it("Can have metadata removed")
-    def test_meta_rem_data_object(self, simple_data_object):
+    def test_rem_meta_data_object(self, simple_data_object):
         obj = DataObject(simple_data_object)
         assert obj.metadata() == []
 
@@ -465,7 +465,7 @@ class TestDataObject(object):
         ), "removing data object metadata is idempotent"
 
     @m.it("Can have metadata replaced")
-    def test_meta_rep_data_object(self, simple_data_object):
+    def test_repl_meta_data_object(self, simple_data_object):
         obj = DataObject(simple_data_object)
         assert obj.metadata() == []
 
@@ -504,14 +504,14 @@ class TestDataObject(object):
         assert obj.metadata() == expected
 
     @m.it("Can be found by its metadata")
-    def test_meta_query_data_object(self, simple_data_object):
+    def test_query_meta_data_object(self, simple_data_object):
         obj = DataObject(simple_data_object)
 
         avu = AVU("abcde", "12345")
         obj.add_metadata(avu)
         assert obj.metadata() == [avu]
 
-        found = query_metadata([avu], data_object=True, zone=obj.path)
+        found = query_metadata(avu, data_object=True, zone=obj.path)
         assert found == [DataObject(simple_data_object)]
 
     @m.it("Can have access controls added")
@@ -552,3 +552,56 @@ class TestDataObject(object):
 
         assert obj.remove_permissions(AC("public", Permission.READ, zone=zone)) == 1
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
+
+
+@m.describe("Query Metadata")
+class TestQueryMetadata(object):
+    @m.descibe("Query Collection namespace")
+    @m.context("When a Collection has metadata")
+    @m.it("Can be queried by that metadata, only returning collections")
+    def test_query_meta_collection(self, annotated_collection, annotated_data_object):
+        assert [] == Collection.query_metadata(AVU("no_such_attr1", "no_such_value1"))
+        assert [Collection(annotated_collection)] == Collection.query_metadata(
+            AVU("attr1", "value1")
+        )
+        assert [Collection(annotated_collection)] == Collection.query_metadata(
+            AVU("attr1", "value1"), AVU("attr2", "value2")
+        )
+        assert [Collection(annotated_collection)] == Collection.query_metadata(
+            AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
+        )
+
+    @m.descibe("Query DataObject namespace")
+    @m.context("When a DataObject has metadata")
+    @m.it("Can be queried by that metadata, only returning data objects")
+    def test_query_meta_data_object(self, annotated_collection, annotated_data_object):
+        assert [] == DataObject.query_metadata(AVU("no_such_attr1", "no_such_value1"))
+        assert [DataObject(annotated_data_object)] == DataObject.query_metadata(
+            AVU("attr1", "value1")
+        )
+        assert [DataObject(annotated_data_object)] == DataObject.query_metadata(
+            AVU("attr1", "value1"), AVU("attr2", "value2")
+        )
+        assert [DataObject(annotated_data_object)] == DataObject.query_metadata(
+            AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
+        )
+
+    @m.descibe("Query both DataObject and Collection namespaces")
+    @m.context("When a DataObjects and Collections have metadata")
+    @m.it("Can be queried by that metadata, only returning everything")
+    def test_query_meta_all(self, annotated_collection, annotated_data_object):
+        assert [] == query_metadata(AVU("no_such_attr1", "no_such_value1"))
+        assert [
+            Collection(annotated_collection),
+            DataObject(annotated_data_object),
+        ] == query_metadata(AVU("attr1", "value1"))
+        assert [
+            Collection(annotated_collection),
+            DataObject(annotated_data_object),
+        ] == query_metadata(AVU("attr1", "value1"), AVU("attr2", "value2"))
+        assert [
+            Collection(annotated_collection),
+            DataObject(annotated_data_object),
+        ] == query_metadata(
+            AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
+        )
