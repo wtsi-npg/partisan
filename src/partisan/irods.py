@@ -74,6 +74,7 @@ class Baton:
 
     CHMOD = "chmod"
     LIST = "list"
+    MKDIR = "mkdir"
     GET = "get"
     PUT = "put"
     CHECKSUM = "checksum"
@@ -334,6 +335,11 @@ class Baton:
             item,
             timeout=timeout,
             tries=tries,
+        )
+
+    def create_collection(self, item: Dict, parents=False, timeout=None, tries=1):
+        self._execute(
+            Baton.MKDIR, {"recurse": parents}, item, timeout=timeout, tries=tries
         )
 
     def _execute(
@@ -1316,6 +1322,14 @@ class Collection(RodsItem):
 
     def __init__(self, path: Union[PurePath, str], pool=default_pool):
         super().__init__(path, pool=pool)
+
+    def create(self, parents=False, exist_ok=False, timeout=None, tries=1):
+        if exist_ok and self.exists():
+            return
+
+        item = self._to_dict()
+        with client(self.pool) as c:
+            c.create_collection(item, parents=parents, timeout=timeout, tries=tries)
 
     def contents(
         self, acl=False, avu=False, recurse=False, timeout=None, tries=1

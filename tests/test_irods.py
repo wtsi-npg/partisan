@@ -300,6 +300,33 @@ class TestCollection(object):
         found = query_metadata([avu], collection=True, zone=coll)
         assert found == [Collection(simple_collection)]
 
+    @m.context("When a Collection does not exist")
+    @m.it("Can be created de novo")
+    def test_create_collection(self, simple_collection):
+        coll = Collection(simple_collection / "new-sub")
+        assert not coll.exists()
+        coll.create(parents=False, exist_ok=False)
+        assert coll.exists()
+
+    @m.it("Can be created with parents on demand")
+    def test_create_collection_parents(self, simple_collection):
+        coll = Collection(simple_collection / "new-sub" / "new-sub-sub")
+        assert not coll.exists()
+        with pytest.raises(RodsError, match="create collection"):
+            coll.create(parents=False, exist_ok=False)
+
+        coll.create(parents=True, exist_ok=False)
+        assert coll.exists()
+
+    @m.it("Will ignore existing collections on demand")
+    def test_create_collection_existing(self, simple_collection):
+        coll = Collection(simple_collection)
+        assert coll.exists()
+        coll.create(parents=False, exist_ok=True)
+
+        with pytest.raises(RodsError, match="create collection"):
+            coll.create(parents=False, exist_ok=False)
+
 
 @m.describe("DataObject")
 class TestDataObject(object):
