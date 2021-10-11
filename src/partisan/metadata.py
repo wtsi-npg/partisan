@@ -50,7 +50,7 @@ def with_namespace(ns: str):
 
 
 class AsValueEnum(Enum):
-    """ "An Enum whose member representation is equal to their value attribute."""
+    """An Enum whose member representation is equal to their value attribute."""
 
     def __repr__(self):
         return self.value

@@ -40,19 +40,19 @@ class BatonError(Exception):
 
 
 class BatonArgumentError(BatonError):
-    """Exception raised when invalid arguments are passed to a baton.py-do operation."""
+    """Exception raised when invalid arguments are passed to a baton operation."""
 
     pass
 
 
 class InvalidJSONError(BatonError):
-    """Exception raised when a baton.py-do JSON document is invalid."""
+    """Exception raised when a baton JSON document is invalid."""
 
     pass
 
 
 class InvalidEnvelopeError(InvalidJSONError):
-    """Exception raised when the baton.py-do JSON document envelope has invalid
+    """Exception raised when the baton JSON document envelope has invalid
     structure, such as missing mandatory properties."""
 
     def __init__(self, *args, **kwargs):

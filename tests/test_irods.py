@@ -34,7 +34,7 @@ from partisan.irods import (
     Collection,
     DataObject,
     Permission,
-    meta_query,
+    query_metadata,
 )
 
 
@@ -265,12 +265,12 @@ class TestCollection(object):
         avu1 = AVU("abcde", "12345")
         avu2 = AVU("vwxyz", "567890")
 
-        assert coll.meta_add(avu1, avu2) == 2
+        assert coll.add_metadata(avu1, avu2) == 2
         assert avu1 in coll.metadata()
         assert avu2 in coll.metadata()
 
         assert (
-            coll.meta_add(avu1, avu2) == 0
+            coll.add_metadata(avu1, avu2) == 0
         ), "adding collection metadata is idempotent"
 
     @m.it("Can have metadata removed")
@@ -280,13 +280,13 @@ class TestCollection(object):
 
         avu1 = AVU("abcde", "12345")
         avu2 = AVU("vwxyz", "567890")
-        coll.meta_add(avu1, avu2)
+        coll.add_metadata(avu1, avu2)
 
-        assert coll.meta_remove(avu1, avu2) == 2
+        assert coll.remove_metadata(avu1, avu2) == 2
         assert avu1 not in coll.metadata()
         assert avu2 not in coll.metadata()
         assert (
-            coll.meta_remove(avu1, avu2) == 0
+            coll.remove_metadata(avu1, avu2) == 0
         ), "removing collection metadata is idempotent"
 
     @m.it("Can be found by its metadata")
@@ -294,11 +294,38 @@ class TestCollection(object):
         coll = Collection(simple_collection)
 
         avu = AVU("abcde", "12345")
-        coll.meta_add(avu)
+        coll.add_metadata(avu)
         assert coll.metadata() == [avu]
 
-        found = meta_query([avu], collection=True, zone=coll)
+        found = query_metadata(avu, collection=True, zone=coll)
         assert found == [Collection(simple_collection)]
+
+    @m.context("When a Collection does not exist")
+    @m.it("Can be created de novo")
+    def test_create_collection(self, simple_collection):
+        coll = Collection(simple_collection / "new-sub")
+        assert not coll.exists()
+        coll.create(parents=False, exist_ok=False)
+        assert coll.exists()
+
+    @m.it("Can be created with parents on demand")
+    def test_create_collection_parents(self, simple_collection):
+        coll = Collection(simple_collection / "new-sub" / "new-sub-sub")
+        assert not coll.exists()
+        with pytest.raises(RodsError, match="create collection"):
+            coll.create(parents=False, exist_ok=False)
+
+        coll.create(parents=True, exist_ok=False)
+        assert coll.exists()
+
+    @m.it("Will ignore existing collections on demand")
+    def test_create_collection_existing(self, simple_collection):
+        coll = Collection(simple_collection)
+        assert coll.exists()
+        coll.create(parents=False, exist_ok=True)
+
+        with pytest.raises(RodsError, match="create collection"):
+            coll.create(parents=False, exist_ok=False)
 
 
 @m.describe("DataObject")
@@ -406,66 +433,66 @@ class TestDataObject(object):
         assert obj.checksum() == "d8e8fca2dc0f896fd7cb4cb0031ba249"
 
     @m.it("Can add have metadata added")
-    def test_meta_add_data_object(self, simple_data_object):
+    def test_add_meta_data_object(self, simple_data_object):
         obj = DataObject(simple_data_object)
         assert obj.metadata() == []
 
         avu1 = AVU("abcde", "12345")
         avu2 = AVU("vwxyz", "567890")
 
-        obj.meta_add(avu1, avu2)
+        obj.add_metadata(avu1, avu2)
         assert avu1 in obj.metadata()
         assert avu2 in obj.metadata()
 
         assert (
-            obj.meta_add(avu1, avu2) == 0
+            obj.add_metadata(avu1, avu2) == 0
         ), "adding data object metadata is idempotent"
 
     @m.it("Can have metadata removed")
-    def test_meta_rem_data_object(self, simple_data_object):
+    def test_rem_meta_data_object(self, simple_data_object):
         obj = DataObject(simple_data_object)
         assert obj.metadata() == []
 
         avu1 = AVU("abcde", "12345")
         avu2 = AVU("vwxyz", "567890")
-        obj.meta_add(avu1, avu2)
+        obj.add_metadata(avu1, avu2)
 
-        assert obj.meta_remove(avu1, avu2) == 2
+        assert obj.remove_metadata(avu1, avu2) == 2
         assert avu1 not in obj.metadata()
         assert avu2 not in obj.metadata()
         assert (
-            obj.meta_remove(avu1, avu2) == 0
+            obj.remove_metadata(avu1, avu2) == 0
         ), "removing data object metadata is idempotent"
 
     @m.it("Can have metadata replaced")
-    def test_meta_rep_data_object(self, simple_data_object):
+    def test_repl_meta_data_object(self, simple_data_object):
         obj = DataObject(simple_data_object)
         assert obj.metadata() == []
 
         avu1 = AVU("abcde", "12345")
         avu2 = AVU("vwxyz", "567890")
-        obj.meta_add(avu1, avu2)
+        obj.add_metadata(avu1, avu2)
 
-        assert obj.meta_supersede(avu1, avu2) == (
+        assert obj.supersede_metadata(avu1, avu2) == (
             0,
             0,
         ), "nothing is replaced when new all AVUs == all old AVUs"
         assert obj.metadata() == [avu1, avu2]
 
-        assert obj.meta_supersede(avu1) == (
+        assert obj.supersede_metadata(avu1) == (
             0,
             0,
         ), "nothing is replaced when one new AVU is in the AVUs"
         assert obj.metadata() == [avu1, avu2]
 
         avu3 = AVU("abcde", "88888")
-        obj.meta_add(avu3)
+        obj.add_metadata(avu3)
 
         # Replace avu1, avu3 with avu4, avu5 (leaving avu2 in place)
         avu4 = AVU("abcde", "99999")
         avu5 = AVU("abcde", "00000")
         date = datetime.utcnow()
-        assert obj.meta_supersede(avu4, avu5, history=True, history_date=date) == (
+        assert obj.supersede_metadata(avu4, avu5, history=True, history_date=date) == (
             2,
             3,
         ), "AVUs sharing an attribute with a new AVU are replaced"
@@ -477,14 +504,14 @@ class TestDataObject(object):
         assert obj.metadata() == expected
 
     @m.it("Can be found by its metadata")
-    def test_meta_query_data_object(self, simple_data_object):
+    def test_query_meta_data_object(self, simple_data_object):
         obj = DataObject(simple_data_object)
 
         avu = AVU("abcde", "12345")
-        obj.meta_add(avu)
+        obj.add_metadata(avu)
         assert obj.metadata() == [avu]
 
-        found = meta_query([avu], data_object=True, zone=obj.path)
+        found = query_metadata(avu, data_object=True, zone=obj.path)
         assert found == [DataObject(simple_data_object)]
 
     @m.it("Can have access controls added")
@@ -495,11 +522,11 @@ class TestDataObject(object):
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
 
         assert (
-            obj.ac_add(AC(user, Permission.OWN, zone=zone)) == 0
+            obj.add_permissions(AC(user, Permission.OWN, zone=zone)) == 0
         ), "nothing is replaced when new ACL == all old ACL"
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
 
-        assert obj.ac_add(AC("public", Permission.READ, zone=zone)) == 1
+        assert obj.add_permissions(AC("public", Permission.READ, zone=zone)) == 1
         assert obj.acl() == [
             AC(user, Permission.OWN, zone=zone),
             AC("public", Permission.READ, zone=zone),
@@ -513,15 +540,68 @@ class TestDataObject(object):
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
 
         assert (
-            obj.ac_rem(AC("public", Permission.READ, zone=zone)) == 0
+            obj.remove_permissions(AC("public", Permission.READ, zone=zone)) == 0
         ), "nothing is removed when the access control does not exist"
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
 
-        assert obj.ac_add(AC("public", Permission.READ, zone=zone)) == 1
+        assert obj.add_permissions(AC("public", Permission.READ, zone=zone)) == 1
         assert obj.acl() == [
             AC(user, Permission.OWN, zone=zone),
             AC("public", Permission.READ, zone=zone),
         ]
 
-        assert obj.ac_rem(AC("public", Permission.READ, zone=zone)) == 1
+        assert obj.remove_permissions(AC("public", Permission.READ, zone=zone)) == 1
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
+
+
+@m.describe("Query Metadata")
+class TestQueryMetadata(object):
+    @m.descibe("Query Collection namespace")
+    @m.context("When a Collection has metadata")
+    @m.it("Can be queried by that metadata, only returning collections")
+    def test_query_meta_collection(self, annotated_collection, annotated_data_object):
+        assert [] == Collection.query_metadata(AVU("no_such_attr1", "no_such_value1"))
+        assert [Collection(annotated_collection)] == Collection.query_metadata(
+            AVU("attr1", "value1")
+        )
+        assert [Collection(annotated_collection)] == Collection.query_metadata(
+            AVU("attr1", "value1"), AVU("attr2", "value2")
+        )
+        assert [Collection(annotated_collection)] == Collection.query_metadata(
+            AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
+        )
+
+    @m.descibe("Query DataObject namespace")
+    @m.context("When a DataObject has metadata")
+    @m.it("Can be queried by that metadata, only returning data objects")
+    def test_query_meta_data_object(self, annotated_collection, annotated_data_object):
+        assert [] == DataObject.query_metadata(AVU("no_such_attr1", "no_such_value1"))
+        assert [DataObject(annotated_data_object)] == DataObject.query_metadata(
+            AVU("attr1", "value1")
+        )
+        assert [DataObject(annotated_data_object)] == DataObject.query_metadata(
+            AVU("attr1", "value1"), AVU("attr2", "value2")
+        )
+        assert [DataObject(annotated_data_object)] == DataObject.query_metadata(
+            AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
+        )
+
+    @m.descibe("Query both DataObject and Collection namespaces")
+    @m.context("When a DataObjects and Collections have metadata")
+    @m.it("Can be queried by that metadata, only returning everything")
+    def test_query_meta_all(self, annotated_collection, annotated_data_object):
+        assert [] == query_metadata(AVU("no_such_attr1", "no_such_value1"))
+        assert [
+            Collection(annotated_collection),
+            DataObject(annotated_data_object),
+        ] == query_metadata(AVU("attr1", "value1"))
+        assert [
+            Collection(annotated_collection),
+            DataObject(annotated_data_object),
+        ] == query_metadata(AVU("attr1", "value1"), AVU("attr2", "value2"))
+        assert [
+            Collection(annotated_collection),
+            DataObject(annotated_data_object),
+        ] == query_metadata(
+            AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
+        )
