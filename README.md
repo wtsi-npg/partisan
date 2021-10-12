@@ -4,7 +4,7 @@
 
     partisan |ˈpɑː.tɪˌzæn|
 
-    noun, A long-handled spear with a triangular, double-edged  blade and 
+    noun, A long-handled spear with a triangular, double-edged blade and 
           lateral projections.
 
     adjective, Biased in support of a party, group, or cause.
