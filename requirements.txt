@@ -1,2 +1,2 @@
 setuptools_scm==6.3.2
-structlog==21.1.0
+structlog==21.2.0
