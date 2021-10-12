@@ -384,6 +384,12 @@ class TestDataObject(object):
             == "39a4aa291ca849d601e4e5b8ed627a04"
         )
 
+    @m.it("Has a size")
+    def test_data_object_size(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+        assert obj.size() == 555
+        assert len(obj.read()) == 555
+
     @m.it("Has a checksum")
     def test_get_checksum(self, simple_data_object):
         obj = DataObject(simple_data_object)
@@ -419,6 +425,15 @@ class TestDataObject(object):
             with pytest.raises(RodsError) as info:
                 obj.checksum(verify_checksum=True)
                 assert info.value.code == decoded[Baton.ERR][Baton.CODE]
+
+    @m.it("Has replicas")
+    def test_replicas(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+
+        assert len(obj.replicas()) == 2
+        for r in obj.replicas():
+            assert r.checksum == "39a4aa291ca849d601e4e5b8ed627a04"
+            assert r.valid
 
     @m.it("Can be overwritten")
     def test_overwrite_data_object(self, tmp_path, simple_data_object):
@@ -556,7 +571,7 @@ class TestDataObject(object):
 
 @m.describe("Query Metadata")
 class TestQueryMetadata(object):
-    @m.descibe("Query Collection namespace")
+    @m.describe("Query Collection namespace")
     @m.context("When a Collection has metadata")
     @m.it("Can be queried by that metadata, only returning collections")
     def test_query_meta_collection(self, annotated_collection, annotated_data_object):
@@ -571,7 +586,7 @@ class TestQueryMetadata(object):
             AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
         )
 
-    @m.descibe("Query DataObject namespace")
+    @m.describe("Query DataObject namespace")
     @m.context("When a DataObject has metadata")
     @m.it("Can be queried by that metadata, only returning data objects")
     def test_query_meta_data_object(self, annotated_collection, annotated_data_object):
@@ -586,7 +601,7 @@ class TestQueryMetadata(object):
             AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
         )
 
-    @m.descibe("Query both DataObject and Collection namespaces")
+    @m.describe("Query both DataObject and Collection namespaces")
     @m.context("When a DataObjects and Collections have metadata")
     @m.it("Can be queried by that metadata, only returning everything")
     def test_query_meta_all(self, annotated_collection, annotated_data_object):

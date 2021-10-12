@@ -171,6 +171,7 @@ class Baton:
         acl=False,
         avu=False,
         contents=False,
+        replicas=False,
         size=False,
         timestamp=False,
         timeout=None,
@@ -184,6 +185,7 @@ class Baton:
             acl: Include ACL information in the result
             avu: Include AVU information in the result
             contents: Include contents in the result (for a collection item)
+            replicas: Include replica information in the result
             size: Include size information in the result (for a data object)
             timestamp: Include timestamp information in the result (for a data object)
             timeout: Operation timeout
@@ -195,6 +197,7 @@ class Baton:
                 "acl": acl,
                 "avu": avu,
                 "contents": contents,
+                "replicate": replicas,
                 "size": size,
                 "timestamp": timestamp,
             },
@@ -359,9 +362,9 @@ class Baton:
         # server are run in their own thread which provides API for managing the
         # timeout behaviour.
         #
-        # Not all long-duration API calls are bad, to timeouts must be set by
+        # Not all long-duration API calls are bad, so timeouts must be set by
         # operation type. A "put" operation of a multi-GiB file may legitimately take
-        # hours, a metadata change may not.
+        # significant time, a metadata change may not.
         lifo = LifoQueue(maxsize=1)
 
         t = Thread(target=lambda q, w: q.put(self._send(w)), args=(lifo, wrapped))
@@ -489,7 +492,7 @@ class BatonPool:
                 c.stop()
 
     def get(self, timeout=None) -> Baton:
-        """Get a client from the pool. if a timeout is supplied, waiting up to the
+        """Get a client from the pool. If a timeout is supplied, waiting up to the
         timeout.
 
         Keyword Args:
@@ -546,8 +549,8 @@ def client(pool: BatonPool, timeout=None) -> Baton:
         pool: The pool from which to get the client.
     Keyword Args:
         timeout: Timeout for both getting the client and putting it back, in seconds.
-        Raises queue.Empty or queue.Full if the get or put operations
-        respectively, time out.
+    Raises:
+         queue.Empty or queue.Full if the get or put operations respectively, time out.
 
     Returns: Baton
     """
@@ -590,7 +593,6 @@ def query_metadata(
         pool: Client pool to use. If omitted, the default pool is used.
 
     Returns: List[Union[DataObject, Collection]]
-
     """
     with client(pool) as c:
         result = c.query_metadata(
@@ -875,6 +877,75 @@ class AVU(object):
     def __str__(self):
         units = " " + self.units if self._units else ""
         return f"<AVU '{self.attribute}' = '{self.value}'{units}>"
+
+
+@total_ordering
+class Replica(object):
+    def __init__(
+        self, resource: str, location: str, number: int, checksum=None, valid=True
+    ):
+
+        if resource is None:
+            raise ValueError("Replica resource may not be None")
+        if location is None:
+            raise ValueError("Replica location may not be None")
+
+        self.resource = resource
+        self.location = location
+        self.number = number
+        self.checksum = checksum
+        self.valid = valid
+
+    def __hash__(self):
+        return (
+            hash(self.number)
+            + hash(self.resource)
+            + hash(self.location)
+            + hash(self.checksum)
+            + hash(self.valid)
+        )
+
+    def __eq__(self, other):
+        if not isinstance(other, Replica):
+            return False
+
+        return (
+            self.number == other.number
+            and self.resource == other.resource
+            and self.location == other.location
+            and self.checksum == other.checksum
+            and self.valid == other.valid
+        )
+
+    def __lt__(self, other):
+        if self.number < other.number:
+            return True
+
+        if self.number == other.number:
+            if self.resource < other.resource:
+                return True
+
+            if self.resource == other.resource:
+                if self.location < other.location:
+                    return True
+
+                if self.location == other.location:
+                    if self.checksum < other.checksum:
+                        return True
+
+                    if self.checksum == other.checksum:
+                        if self.valid < other.valid:
+                            return True
+        return False
+
+    def __repr__(self):
+        return f"{self.number}:{self.resource}:{self.checksum}:{self.valid}"
+
+    def __str__(self):
+        return (
+            f"<Replica {self.number} {self.resource} checksum={self.checksum} "
+            f"valid={self.valid}>"
+        )
 
 
 class RodsItem(PathLike):
@@ -1276,9 +1347,48 @@ class DataObject(RodsItem):
                 tries=tries,
             )
 
+    def size(self, timeout=None, tries=1) -> int:
+        """Return the size of the data object according to the iRODS IES database, in
+        bytes.
+
+        Args:
+            timeout:
+            tries:
+
+        Returns: int
+        """
+        item = self._list(size=True, timeout=timeout, tries=tries).pop()
+        return item["size"]
+
+    def timestamp(self, timeout=None, tries=1):
+        """Return the timestamp of the data object according to the iRODS IES database.
+
+        Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: datetime
+        """
+        # item = self._list(timestamp=True, timeout=timeout, tries=tries).pop()
+        raise NotImplementedError()
+
+    def replicas(self, timeout=None, tries=1) -> List[Replica]:
+        """Return the replicas of the data object.
+
+        Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: List[Replica]
+        """
+        item = self._list(replicas=True, timeout=timeout, tries=tries).pop()
+        replicas = [Replica(**args) for args in item["replicates"]]
+        replicas.sort()
+        return replicas
+
     def get(
         self, local_path: Union[Path, str], verify_checksum=True, timeout=None, tries=1
-    ) -> int:
+    ):
         """Get the data object from iRODS and save to a local file.
 
         Args:
@@ -1401,6 +1511,14 @@ class Collection(RodsItem):
         super().__init__(path, pool=pool)
 
     def create(self, parents=False, exist_ok=False, timeout=None, tries=1):
+        """Create a new, empty Collection on the server side.
+
+        Keyword Args:
+            parents: Create parent collections as necessary.
+            exist_ok: If the collection exists, do not raise an error.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+        """
         if exist_ok and self.exists():
             return
 
@@ -1411,7 +1529,7 @@ class Collection(RodsItem):
     def contents(
         self, acl=False, avu=False, recurse=False, timeout=None, tries=1
     ) -> List[Union[DataObject, Collection]]:
-        """Return list of the Collection contents.
+        """Return a list of the Collection contents.
 
         Keyword Args:
           acl: Include ACL information.
@@ -1467,9 +1585,26 @@ class Collection(RodsItem):
         return _make_rods_item(items.pop(), pool=self.pool)
 
     def get(self, local_path: Union[Path, str], **kwargs):
+        """Get the collection and contents from iRODS and save to a local directory.
+
+        Args:
+            local_path: The local path of a directory to be created.
+        Keyword Args:
+            **kwargs:
+        """
         raise NotImplementedError()
 
     def put(self, local_path: Union[Path, str], recurse=True, timeout=None, tries=1):
+        """Put the collection into iRODS.
+
+        Args:
+            local_path: The local path of a directory to put into iRODS at the path
+            specified by this collection.
+        Keyword Args:
+            recurse: Recurse through subdirectories.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+        """
         raise NotImplementedError()
 
     def _list(self, **kwargs) -> List[dict]:
