@@ -80,8 +80,8 @@ Given some collections and data objects already in iRODS ...
 ### Collections
 
 To make an object representing a collection, pass a string or `os.PathLike`
-to the Collection constructor. iRODS paths are virtual, existing only in
-the iRODS catalog database. A `Collection` is a Python `os.PathLike` object.
+to the `Collection` constructor. iRODS paths are virtual, existing only in
+the iRODS IES database. A `Collection` is a Python `os.PathLike` object.
 
      coll = Collection(ont_gridion)
      assert coll.exists(), "The collection exists"
@@ -110,7 +110,7 @@ We can examine the collection's metadata.
 
         assert coll.metadata() == [], "The collection has no metadata"
 
-We can examine the collections permissions. Note that you may get a
+We can examine the collection's permissions. Note that you may get a
 different result on your iRODS, depending on your user and zone.
 
         assert coll.permissions() == [AC("irods", Permission.OWN, zone="testZone")]
@@ -118,7 +118,7 @@ different result on your iRODS, depending on your user and zone.
 ### DataObjects
 
 To make an object representing a data object, pass a string or `os.PathLike`
-to the DataObject constructor. iRODS paths are virtual, existing only in
+to the `DataObject` constructor. iRODS paths are virtual, existing only in
 the iRODS catalog database. A `DataObject` is a Python `os.PathLike` object.
 
         obj = DataObject(
@@ -130,7 +130,7 @@ the iRODS catalog database. A `DataObject` is a Python `os.PathLike` object.
         )
         assert obj.exists(), "The data object exists"
 
-We can examine the data object permissions. Note that you may get a
+We can examine the data object's permissions. Note that you may get a
 different result on your iRODS, depending on your user and zone.
 
         assert obj.permissions() == [AC("irods", Permission.OWN, zone="testZone")]
@@ -139,7 +139,7 @@ We can compare the remote object's checksum with its expected value.
 
         assert obj.checksum() == "c462fb84625c26ba15ecdf62e15a9560"
 
-We can list the object, which returns a new instance
+We can list the object, which returns a new instance.
 
         assert obj.list() == obj
 
@@ -185,14 +185,14 @@ We can examine the data object's metadata.
 
         assert obj.metadata() == [], "The data object has no metadata"
 
-We can add some metadata to the data object. Let's add two AVUs (Attribute,
+We can add some metadata to the data object. Let's add two `AVU`s (Attribute,
 Value, Unit tuples).
 
         obj.add_metadata(
             AVU("sample_id", "sample_1"), AVU("experiment_id", "experiment_1")
         )
 
-Note that metadata returned by this method are sorted by AVU attribute and
+Note that metadata returned by this method are sorted by `AVU` attribute and
 value.
 
         assert obj.metadata() == [
@@ -206,7 +206,7 @@ Here we query on experiment_id alone.
         assert DataObject.query_metadata(AVU("experiment_id", "experiment_1")) == [obj]
 
 Note that in iRODS, collection and data object metadata are separate and
-must be queried independently. In the partisan API, a query using
+must be queried independently. In the `partisan` API, a query using
 `DataObject.query_metadata()` searches only data object metadata, while
 `Collection.query_metadata()` searches only collection metadata.
 
@@ -240,7 +240,7 @@ have started.
 
 ### Timeouts
 
-In its API methods that communicate with the iRODS server, partisan
+In its API methods that communicate with the iRODS server, `partisan`
 provides the two keyword arguments `timeout` and `tries` to control the
 timeout for the operation (in seconds) and how many attempts should be made
 to carry it out before raising an exception. The default values for 
@@ -253,7 +253,7 @@ seconds).
 
         Collection(ont_gridion).exists(timeout=10, tries=3)
 
-A timeout may occur for one of two reasons. Firstly, if no BatonClient is
+A timeout may occur for one of two reasons. Firstly, if no `BatonClient` is
 available before the timeout expires and secondly, if the iRODS server takes 
 longer than the timeout to respond with a result. partisan does not
 distinguish between these circumstances.
