@@ -33,7 +33,7 @@ from os import PathLike
 from pathlib import Path, PurePath
 from queue import LifoQueue, Queue
 from threading import Thread
-from typing import Annotated, Any, Dict, List, Tuple, Union
+from typing import Annotated, Any, Dict, List, Tuple, Union, Iterable
 
 from structlog import get_logger
 
@@ -1570,6 +1570,34 @@ class Collection(RodsItem):
             collect = contents
 
         return sorted(collect)
+
+    def iter_contents(
+        self, acl=False, avu=False, timeout=None, tries=1
+    ) -> Iterable[Union[DataObject, Collection]]:
+        """Return a generator for the Collection contents.
+
+        Keyword Args:
+          acl: Include ACL information.
+          avu: Include AVU (metadata) information.
+          timeout: Operation timeout in seconds.
+          tries: Number of times to try the operation.
+
+        Returns: Iterable[Union[DataObject, Collection]]"""
+        items = self._list(
+            acl=acl,
+            avu=avu,
+            contents=True,
+            timeout=timeout,
+            tries=tries,
+        )
+
+        contents = [_make_rods_item(item, pool=self.pool) for item in items]
+        for elt in contents:
+            elt.path = self.path / elt.path  # Make an absolute path
+            yield elt
+
+            if isinstance(elt, Collection):
+                yield from elt.iter_contents(acl, avu, timeout, tries)
 
     def list(self, acl=False, avu=False, timeout=None, tries=1) -> Collection:
         """Return a new Collection representing this one.
