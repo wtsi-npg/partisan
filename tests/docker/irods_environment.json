@@ -1,0 +1,10 @@
+{
+    "irods_host": "irods",
+    "irods_port": 1247,
+    "irods_user_name": "irods",
+    "irods_home": "/testZone/home/irods",
+    "irods_cwd": "/testZone/home/irods",
+    "irods_zone_name": "testZone",
+    "irods_default_resource": "replResc",
+    "irods_default_hash_scheme": "MD5"
+}

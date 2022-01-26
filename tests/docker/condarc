@@ -1,0 +1,13 @@
+auto_update_conda: false
+notify_outdated_conda: false
+ssl_verify: true
+show_channel_urls: true
+
+channels:
+  - https://dnap.cog.sanger.ac.uk/npg/conda/devel/generic
+  - defaults
+
+pkgs_dirs:
+  - /home/testuser/conda/pkgs
+envs_dirs:
+  - /home/testuser/conda/envs
