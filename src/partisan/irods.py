@@ -184,7 +184,7 @@ class Baton:
             this must be suitable input for baton-do.
             acl: Include ACL information in the result.
             avu: Include AVU information in the result.
-            contents: Include contents in the result (for a collection item)
+            contents: Include contents in the result (for a collection item).
             replicas: Include replica information in the result.
             size: Include size information in the result (for a data object).
             timestamp: Include timestamp information in the result (for a data object).
@@ -192,7 +192,7 @@ class Baton:
             tries: Number of times to try the operation.
 
         Returns:
-            A single Dict when listing a data object or single collection, or a multiple
+            A single Dict when listing a data object or single collection, or multiple
             Dicts when listing a collection's contents.
         """
         result = self._execute(
@@ -412,7 +412,7 @@ class Baton:
             local_path: The path of a file to upload.
             calculate_checksum: Calculate a remote checksum.
             verify_checksum: Verify the remote checksum after upload.
-            force: Overwrite any existing data object..
+            force: Overwrite any existing data object.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
@@ -1064,7 +1064,7 @@ class RodsItem(PathLike):
     def exists(self, timeout=None, tries=1) -> bool:
         """Return true if the item exists in iRODS.
 
-        Keyword Args:
+        Args:
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
         """
@@ -1417,7 +1417,7 @@ class DataObject(RodsItem):
 
         Args:
             calculate_checksum: Calculate remote checksums for all replicates. If
-            checksums exist, this is s no-op.
+            checksums exist, this is a no-op.
             recalculate_checksum: Force recalculation of remote checksums for all
             replicates.
             verify_checksum: Verify the local checksum against the remote checksum.
@@ -1514,7 +1514,7 @@ class DataObject(RodsItem):
             local_path: The local path of a file to put into iRODS at the path
             specified by this data object.
             calculate_checksum: Calculate remote checksums for all replicates. If
-            checksums exist, this is s no-op.
+            checksums exist, this is a no-op.
             verify_checksum: Verify the local checksum against the remote checksum.
             Verification implies checksum calculation.
             force: Overwrite any data object already present in iRODS.
