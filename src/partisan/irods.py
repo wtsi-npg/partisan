@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021 Genome Research Ltd. All rights reserved.
+# Copyright © 2020, 2021, 2022 Genome Research Ltd. All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -180,16 +180,20 @@ class Baton:
         """Lists i.e. reports on items in iRODS.
 
         Args:
-            item: A dictionary representing the item. When serialized as JSON,
+            item: A dictionary representing the item When serialized as JSON,
             this must be suitable input for baton-do.
-            acl: Include ACL information in the result
-            avu: Include AVU information in the result
-            contents: Include contents in the result (for a collection item)
-            replicas: Include replica information in the result
-            size: Include size information in the result (for a data object)
-            timestamp: Include timestamp information in the result (for a data object)
-            timeout: Operation timeout
-            tries: Number of times to try the operation
+            acl: Include ACL information in the result.
+            avu: Include AVU information in the result.
+            contents: Include contents in the result (for a collection item).
+            replicas: Include replica information in the result.
+            size: Include size information in the result (for a data object).
+            timestamp: Include timestamp information in the result (for a data object).
+            timeout: Operation timeout.
+            tries: Number of times to try the operation.
+
+        Returns:
+            A single Dict when listing a data object or single collection, or multiple
+            Dicts when listing a collection's contents.
         """
         result = self._execute(
             Baton.LIST,
@@ -221,6 +225,21 @@ class Baton:
         timeout=None,
         tries=1,
     ) -> str:
+        """Perform remote checksum operations.
+
+        Args:
+            item: A dictionary representing the item When serialized as JSON,
+            this must be suitable input for baton-do.
+            calculate_checksum: Ask iRODS to calculate the checksum, if there is no
+            remote checksum currently.
+            recalculate_checksum: Ask iRODS to calculate the checksum, even if there
+            is a remote checksum currently.
+            verify_checksum: Verify the remote checksum against the data.
+            timeout: Operation timeout.
+            tries: Number of times to try the operation.
+
+        Returns: The checksum.
+        """
         result = self._execute(
             Baton.CHECKSUM,
             {
@@ -236,11 +255,27 @@ class Baton:
         return checksum
 
     def add_metadata(self, item: Dict, timeout=None, tries=1):
+        """Add metadata to an item in iRODS.
+
+        Args:
+            item: A dictionary representing the item When serialized as JSON,
+            this must be suitable input for baton-do.
+            timeout: Operation timeout.
+            tries: Number of times to try the operation.
+        """
         self._execute(
             Baton.METAMOD, {Baton.OP: Baton.ADD}, item, timeout=timeout, tries=tries
         )
 
     def remove_metadata(self, item: Dict, timeout=None, tries=1):
+        """Remove metadata from an item in iRODS.
+
+        Args:
+            item: A dictionary representing the item. When serialized as JSON,
+            this must be suitable input for baton-do.
+            timeout: Operation timeout.
+            tries: Number of times to try the operation.
+        """
         self._execute(
             Baton.METAMOD, {Baton.OP: Baton.REM}, item, timeout=timeout, tries=tries
         )
@@ -254,6 +289,18 @@ class Baton:
         timeout=None,
         tries=1,
     ) -> Dict:
+        """Query metadata in iRODS.
+
+        Args:
+            avus: The query, expressed as AVUs.
+            zone: The iRODS zone name.
+            collection: Query collection metadata, default true.
+            data_object: Query data object metadata, default true.
+            timeout: Operation timeout.
+            tries: Number of times to try the operation.
+
+        Returns: The query result.
+        """
         args = {}
         if collection:
             args["collection"] = True
@@ -267,6 +314,15 @@ class Baton:
         return self._execute(Baton.METAQUERY, args, item, timeout=timeout, tries=tries)
 
     def set_permission(self, item: Dict, recurse=False, timeout=None, tries=1):
+        """Set access permissions on a data object or collection.
+
+        Args:
+            item: A dictionary representing the item. When serialized as JSON,
+            this must be suitable input for baton-do.
+            recurse: Recursively set permissions on a collection.
+            timeout: Operation timeout.
+            tries: Number of times to try the operation.
+        """
         self._execute(
             Baton.CHMOD, {"recurse": recurse}, item, timeout=timeout, tries=tries
         )
@@ -280,6 +336,19 @@ class Baton:
         timeout=None,
         tries=1,
     ) -> int:
+        """Get a data object from iRODS.
+
+        Args:
+            item: A dictionary representing the item. When serialized as JSON,
+            this must be suitable input for baton-do.
+            local_path: A local path to create.
+            verify_checksum: Verify the data object's checksum on download.
+            force: Overwrite any existing file.
+            timeout: Operation timeout.
+            tries: Number of times to try the operation.
+
+        Returns: The number of bytes downloaded.
+        """
         # TODO: Note that baton does not use rcDataObjGet to get data. It streams the
         #  file while calculating the MD5 and overwrites existing files without
         #  warning. Therefore it is similar to using verify_checksum=True,
@@ -308,6 +377,16 @@ class Baton:
         return local_path.stat().st_size
 
     def read(self, item: Dict, timeout=None, tries=1) -> str:
+        """Read the contents of a data object as a string.
+
+        Args:
+            item: A dictionary representing the item. When serialized as JSON,
+            this must be suitable input for baton-do.
+            timeout: Operation timeout.
+            tries: Number of times to try the operation.
+
+        Returns: The data object contents as a string.
+        """
         result = self._execute(Baton.GET, {}, item, timeout=timeout, tries=tries)
         if Baton.DATA not in result:
             raise InvalidJSONError(
@@ -325,6 +404,18 @@ class Baton:
         timeout=None,
         tries=1,
     ):
+        """Put a data object into iRODS.
+
+        Args:
+            item: A dictionary representing the item. When serialized as JSON,
+            this must be suitable input for baton-do.
+            local_path: The path of a file to upload.
+            calculate_checksum: Calculate a remote checksum.
+            verify_checksum: Verify the remote checksum after upload.
+            force: Overwrite any existing data object.
+            timeout: Operation timeout.
+            tries: Number of times to try the operation.
+        """
         item["directory"] = local_path.parent
         item["file"] = local_path.name
 
@@ -341,6 +432,15 @@ class Baton:
         )
 
     def create_collection(self, item: Dict, parents=False, timeout=None, tries=1):
+        """Create a new collection.
+
+        Args:
+            item: A dictionary representing the item. When serialized as JSON,
+            this must be suitable input for baton-do.
+            parents: Create the collection's parents, if necessary.
+            timeout: Operation timeout.
+            tries: Number of times to try the operation.
+        """
         self._execute(
             Baton.MKDIR, {"recurse": parents}, item, timeout=timeout, tries=tries
         )
@@ -358,7 +458,7 @@ class Baton:
 
         # The most common failure mode we encounter with clients that use the iRODS C
         # API is where the server stops responding to API calls on the current
-        # connection. In order to timeout these bad operations, round-trips to the
+        # connection. In order to time out these bad operations, round-trips to the
         # server are run in their own thread which provides API for managing the
         # timeout behaviour.
         #
@@ -495,7 +595,7 @@ class BatonPool:
         """Get a client from the pool. If a timeout is supplied, waiting up to the
         timeout.
 
-        Keyword Args:
+        Args:
             timeout: Timeout to get a client, in seconds. Raises queue.Empty if the
             operation times out.
 
@@ -512,12 +612,13 @@ class BatonPool:
         return c
 
     def put(self, c: Baton, timeout=None):
-        """Put a client back into the pool. if a timeout is supplied, waiting up to the
+        """Put a client back into the pool. If a timeout is supplied, waiting up to the
         timeout.
 
-        Keyword Args:
-        timeout: Timeout to put a client, in seconds. Raises queue.Full if the
-        operation times out.
+        Args:
+            c: A baton client
+            timeout: Timeout to put a client, in seconds. Raises queue.Full if the
+            operation times out.
         """
         log.debug(f"Returning a client to the pool: {c}")
         self._queue.put(c, timeout=timeout)
@@ -528,7 +629,7 @@ def client_pool(maxsize=4) -> BatonPool:
     """Yields a pool of clients that will be closed automatically when the pool goes
     out of scope.
 
-    Keyword Args:
+    Args:
         maxsize: The maximum number of active clients in the pool.
 
     Yields: BatonPool
@@ -547,7 +648,6 @@ def client(pool: BatonPool, timeout=None) -> Baton:
 
     Args:
         pool: The pool from which to get the client.
-    Keyword Args:
         timeout: Timeout for both getting the client and putting it back, in seconds.
     Raises:
          queue.Empty or queue.Full if the get or put operations respectively, time out.
@@ -584,7 +684,6 @@ def query_metadata(
 
     Args:
         *avus: AVUs to query.
-    Keyword Args
         zone: Zone hint for the query. Defaults to None (query the current zone).
         collection: Query the collection namespace. Defaults to True.
         data_object: Query the data object namespace. Defaults to True.
@@ -623,7 +722,7 @@ class Permission(Enum):
 class AC(object):
     """AC is an iRODS access control.
 
-    ACs may be sorted, where they will sorted lexically, first by
+    ACs may be sorted, where they will be sorted lexically, first by
     zone, then by user, and finally by permission.
     """
 
@@ -744,7 +843,6 @@ class AVU(object):
         Args:
             avus: AVUs removed, which must share the same attribute
             and namespace (if any).
-        Keyword Args:
             history_date: A datetime to be embedded as part of the history
             AVU value.
 
@@ -966,7 +1064,7 @@ class RodsItem(PathLike):
     def exists(self, timeout=None, tries=1) -> bool:
         """Return true if the item exists in iRODS.
 
-        Keyword Args:
+        Args:
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
         """
@@ -983,7 +1081,6 @@ class RodsItem(PathLike):
 
         Args:
             *avus: AVUs to add.
-        Keyword Args:
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1009,7 +1106,6 @@ class RodsItem(PathLike):
 
         Args:
             *avus: AVUs to remove.
-        Keyword Args:
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1043,7 +1139,6 @@ class RodsItem(PathLike):
          Args:
              avus: AVUs to add in place of existing AVUs sharing those
              attributes.
-         Keyword Args:
              history: Create history AVUs describing any AVUs removed when
              superseding. See AVU.history.
              history_date: A datetime to be embedded as part of the history
@@ -1062,8 +1157,8 @@ class RodsItem(PathLike):
         rem_attrs = set(map(lambda avu: avu.attribute, avus))
         to_remove = set(filter(lambda a: a.attribute in rem_attrs, current))
 
-        # If the argument AVUs have some of the AVUs to remove amongst them,
-        # we don't want to remove them from the item, just to add them back.
+        # If the argument AVUs have some AVUs to remove amongst them, we don't want
+        # to remove them from the item, just to add them back.
         to_remove.difference_update(avus)
         to_remove = sorted(to_remove)
         if to_remove:
@@ -1093,12 +1188,11 @@ class RodsItem(PathLike):
         self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
     ) -> int:
         """Add access controls to the item. Return the number of access
-        controls added. If some of the argument access controls are already
-        present, those arguments will be ignored.
+        controls added. If some argument access controls are already present,
+        those arguments will be ignored.
 
         Args:
             acs: Access controls.
-        Keyword Args:
             recurse: Recursively add access control.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1120,12 +1214,11 @@ class RodsItem(PathLike):
         self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
     ) -> int:
         """Remove access controls from the item. Return the number of access
-        controls removed. If some of the argument access controls are not
-        present, those arguments will be ignored.
+        controls removed. If some argument access controls are not present, those
+        arguments will be ignored.
 
         Args:
             acs: Access controls.
-        Keyword Args
             recurse: Recursively add access control.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1157,7 +1250,6 @@ class RodsItem(PathLike):
 
         Args:
             acs: Access controls.
-        Keyword Args:
             recurse: Recursively supersede access controls.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1193,7 +1285,7 @@ class RodsItem(PathLike):
     def metadata(self, timeout=None, tries=1) -> List[AVU]:
         """Return the item's metadata.
 
-        Keyword Args:
+        Args:
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1208,7 +1300,7 @@ class RodsItem(PathLike):
     def permissions(self, timeout=None, tries=1) -> List[AC]:
         """Return the item's Access Control List (ACL). Synonym for acl().
 
-        Keyword Args:
+        Args:
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1219,7 +1311,7 @@ class RodsItem(PathLike):
     def acl(self, timeout=None, tries=1) -> List[AC]:
         """Return the item's Access Control List (ACL). Synonym for permissions().
 
-        Keyword Args:
+        Args:
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1238,6 +1330,7 @@ class RodsItem(PathLike):
 
     @abstractmethod
     def put(self, local_path: Union[Path, str], **kwargs):
+        """Put the item into iRODS."""
         pass
 
     @abstractmethod
@@ -1273,7 +1366,6 @@ class DataObject(RodsItem):
 
         Args:
             *avus: AVUs to query.
-        Keyword Args
             zone: Zone hint for the query. Defaults to None (query the current zone).
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1300,7 +1392,7 @@ class DataObject(RodsItem):
     def list(self, timeout=None, tries=1) -> DataObject:
         """Return a new DataObject representing this one.
 
-        Keyword Args:
+        Args:
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1323,9 +1415,9 @@ class DataObject(RodsItem):
         """Get the checksum of the data object. If no checksum has been calculated on
         the remote side, return None.
 
-        Keyword Args:
+        Args:
             calculate_checksum: Calculate remote checksums for all replicates. If
-            checksums exist, this is s no-op.
+            checksums exist, this is a no-op.
             recalculate_checksum: Force recalculation of remote checksums for all
             replicates.
             verify_checksum: Verify the local checksum against the remote checksum.
@@ -1352,8 +1444,8 @@ class DataObject(RodsItem):
         bytes.
 
         Args:
-            timeout:
-            tries:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
 
         Returns: int
         """
@@ -1393,7 +1485,6 @@ class DataObject(RodsItem):
 
         Args:
             local_path: The local path of a file to be created.
-        Keyword Args:
             verify_checksum: Verify the local checksum against the remote checksum.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1422,9 +1513,8 @@ class DataObject(RodsItem):
         Args:
             local_path: The local path of a file to put into iRODS at the path
             specified by this data object.
-        Keyword Args:
             calculate_checksum: Calculate remote checksums for all replicates. If
-            checksums exist, this is s no-op.
+            checksums exist, this is a no-op.
             verify_checksum: Verify the local checksum against the remote checksum.
             Verification implies checksum calculation.
             force: Overwrite any data object already present in iRODS.
@@ -1447,7 +1537,7 @@ class DataObject(RodsItem):
         """Read the data object from iRODS into a string. This operation is supported
         for data objects containing UTF-8 text.
 
-        Keyword Args:
+        Args:
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1513,7 +1603,7 @@ class Collection(RodsItem):
     def create(self, parents=False, exist_ok=False, timeout=None, tries=1):
         """Create a new, empty Collection on the server side.
 
-        Keyword Args:
+        Args:
             parents: Create parent collections as necessary.
             exist_ok: If the collection exists, do not raise an error.
             timeout: Operation timeout in seconds.
@@ -1531,7 +1621,7 @@ class Collection(RodsItem):
     ) -> List[Union[DataObject, Collection]]:
         """Return a list of the Collection contents.
 
-        Keyword Args:
+        Args:
           acl: Include ACL information.
           avu: Include AVU (metadata) information.
           recurse: Recurse into sub-collections.
@@ -1576,7 +1666,7 @@ class Collection(RodsItem):
     ) -> Iterable[Union[DataObject, Collection]]:
         """Return a generator for the Collection contents.
 
-        Keyword Args:
+        Args:
           acl: Include ACL information.
           avu: Include AVU (metadata) information.
           timeout: Operation timeout in seconds.
@@ -1602,7 +1692,7 @@ class Collection(RodsItem):
     def list(self, acl=False, avu=False, timeout=None, tries=1) -> Collection:
         """Return a new Collection representing this one.
 
-        Keyword Args:
+        Args:
           acl: Include ACL information.
           avu: Include AVU (metadata) information.
 
@@ -1628,7 +1718,6 @@ class Collection(RodsItem):
         Args:
             local_path: The local path of a directory to put into iRODS at the path
             specified by this collection.
-        Keyword Args:
             recurse: Recurse through subdirectories.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.

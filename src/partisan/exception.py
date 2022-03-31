@@ -65,6 +65,8 @@ class InvalidEnvelopeError(InvalidJSONError):
 
 
 class BatonTimeoutError(BatonError):
+    """Exception raised with interaction with a baton client times out."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args)
         self.message = args[0] if len(args) > 0 else ""
