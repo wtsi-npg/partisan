@@ -1444,8 +1444,8 @@ class DataObject(RodsItem):
         bytes.
 
         Args:
-            timeout:
-            tries:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
 
         Returns: int
         """
