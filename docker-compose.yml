@@ -1,0 +1,22 @@
+services:
+  irods-server:
+    image: wsinpg/ub-18.04-irods-4.2.11
+    restart: always
+    ports:
+      - "1247:1247"
+
+  irods-clients:
+    container_name: irods-clients
+    image: wsinpg/md-bullseye-irods-clients-4.2.11
+    volumes:
+      - $PWD:$PWD
+      - $HOME/.irods:$HOME/.irods
+    environment:
+      - CLIENT_USER=$USER
+      - CLIENT_USER_ID=$UID
+      - CLIENT_USER_HOME=$HOME
+      - IRODS_ENVIRONMENT_FILE=$HOME/.irods/irods_environment.json
+      - TMPDIR=$PWD/tests/tmpdir
+    command: sleep infinity
+    depends_on:
+      - irods-server
