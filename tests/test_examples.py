@@ -81,7 +81,7 @@ class TestExamples(object):
         # different result on your iRODS, depending on your user and zone.
         assert coll.permissions() == [AC("irods", Permission.OWN, zone="testZone")]
 
-    def test_data_object_examples(self, ont_gridion):
+    def test_data_object_examples(self, ont_gridion, tmp_path):
         # To make an object representing a data object, pass a string or os.PathLike
         # to the DataObject constructor. iRODS paths are virtual, existing only in
         # the iRODS catalog database. A DataObject is a Python os.PathLike object.
@@ -117,19 +117,19 @@ class TestExamples(object):
 
         # We can get the data object to a local file and confirm that the data within
         # is the expected size and matches the expected checksum.
-        with tempfile.TemporaryDirectory() as d:
-            local_path = Path(d, obj.name)
-            obj.get(local_path)
 
-            with open(local_path, "rb") as f:
-                m = hashlib.md5()
-                n = 0
-                for b in iter(lambda: f.read(1024), b""):
-                    n += len(b)
-                    m.update(b)
+        local_path = Path(tmp_path, obj.name)
+        obj.get(local_path)
 
-                assert n == 1369
-                assert m.hexdigest() == "c462fb84625c26ba15ecdf62e15a9560"
+        with open(local_path, "rb") as f:
+            m = hashlib.md5()
+            n = 0
+            for b in iter(lambda: f.read(1024), b""):
+                n += len(b)
+                m.update(b)
+
+            assert n == 1369
+            assert m.hexdigest() == "c462fb84625c26ba15ecdf62e15a9560"
 
         # For small text files, we can also read a data object directly into memory.
         assert (
