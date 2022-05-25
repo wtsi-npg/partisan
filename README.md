@@ -267,3 +267,27 @@ distinguish between these circumstances.
   clients. These are not required during normal operation.
 
 These tools should be present on the `PATH`, when required.
+
+## Testing with Docker
+
+For systems without access to native irods client support, docker compose can be run with:
+
+```commandline
+    UID=$(id -u) docker-compose up -d
+```
+
+This provides two containers, an irods-server container, and an irods-clients container. 
+With a clone of the containers repo present, the necessary clients (iinit, iadmin, imkdir, 
+iput, irm and baton-do) should be symlinked to somewhere on the `PATH` as shown in that 
+repo:
+
+```commandline
+    ln -s /path/to/container/repo/docker/irods_clients/scripts/irods_client_wrapper.sh ./bin/client_name
+```
+
+The irods config can then be initialised using `iinit`, and the tests run with `tmp` 
+redirected to a destination in a shared volume:
+
+```commandline
+    pytest --basetemp=tests/tmp
+```
