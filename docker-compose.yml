@@ -1,23 +1,23 @@
 services:
   irods-server:
     container_name: irods-server
-    image: wsinpg/ub-18.04-irods-4.2.11
+    image: "wsinpg/ub-18.04-irods-${IRODS_VERSION:-4.2.11}:${DOCKER_TAG:-latest}"
     restart: always
     ports:
       - "1247:1247"
       - "20000-20199:20000-20199"
 
-  irods-clients: # setup (symlinks etc.) required is documented in irods-client readme of containers repo
+  irods-clients:
     container_name: irods-clients
-    image: wsinpg/md-bullseye-irods-clients-4.2.11
+    image: "wsinpg/md-bullseye-irods-clients-${IRODS_VERSION:-4.2.11}:${DOCKER_TAG:-latest}"
     volumes:
-      - ${PWD}:${PWD}
-      - ${PWD}/tests/.irods:${HOME}/.irods/
+      - "${PWD}:${PWD}"
+      - "${PWD}/tests/.irods:${HOME}/.irods/"
     environment:
       CLIENT_USER: "${USER:? \nERROR: The USER environment variable is unset}"
-      CLIENT_USER_ID: "${UID:? \nERROR: The UID environment variable is unset}" # UID=${UID} should be set at the beginning of the docker-compose command
+      CLIENT_USER_ID: "${UID:? \nERROR: The UID environment variable is unset}"
       CLIENT_USER_HOME: "${HOME}"
-      IRODS_ENVIRONMENT_FILE: "${PWD}/irods_environment.json"
+      IRODS_ENVIRONMENT_FILE: "${HOME}/.irods/irods_environment.json"
     command: sleep infinity
     depends_on:
       - irods-server

@@ -270,24 +270,75 @@ These tools should be present on the `PATH`, when required.
 
 ## Testing with Docker
 
-For systems without access to native irods client support, docker compose can be run with:
+An iRODS server and clients are available as Docker images which may be used
+with Docker Compose to set up a standard test environment. The test 
+environment consists of an `irods-server` container and an `irods-clients` 
+container.
+
+Before running the tests, start the containers and supporting network:
+
+```commandline
+    docker-compose up -d
+```
+
+The environment variables `IRODS_VERSION` (defaults to `4.2.11`) and 
+`DOCKER_TAG` (defaults to `latest`) may be used to choose particular 
+Docker images.
+
+
+```commandline
+    IRODS_VERSION="4.2.11" DOCKER_TAG="latest" docker-compose up -d
+```
+
+The `./tests/bin` directory contains a universal iRODS proxy script to be used
+instead of native iRODS clients. It forwards any client operations to the 
+real iRODS clients inside the `irods-clients` container. This directory 
+should be on your `PATH` while running the tests. The iRODS authentication 
+file can then be created using `iinit`: 
+
+```commandline
+    export PATH="./tests/bin:$PATH"
+    iinit
+```
+
+The tests should be run in the root of the repository, with `tmp` redirected 
+to a destination in a shared volume:
+
+```commandline
+    pytest --basetemp=./tests/tmp
+```
+
+Finally, to destroy the test containers and network:
+
+````commandline
+     docker-compose down
+````
+
+
+### Test troubleshooting
+
+When starting the containers, you may see an error similar to:
+
+```
+    invalid interpolation format for services.irods-clients.environment.CLIENT_USER_ID:
+    "required variable UID is missing a value:  \nERROR: The UID environment 
+    variable is unset". You may need to escape any $ with another $
+```
+
+which is caused by the `UID` shell variable being unset or not exported. See
+this [Docker Compose issue](https://github.com/docker/compose/issues/2380) for
+more details.
+
+
+You can work around this by running exporting the relevant variable(s):
+
+```commandline
+    export UID
+    docker-compose up -d
+```
+
+or:
 
 ```commandline
     UID=$(id -u) docker-compose up -d
-```
-
-This provides two containers, an irods-server container, and an irods-clients container. 
-With a clone of the containers repo present, the necessary clients (iinit, iadmin, imkdir, 
-iput, irm and baton-do) should be symlinked to somewhere on the `PATH` as shown in that 
-repo:
-
-```commandline
-    ln -s /path/to/container/repo/docker/irods_clients/scripts/irods_client_wrapper.sh ./bin/client_name
-```
-
-The irods config can then be initialised using `iinit`, and the tests run with `tmp` 
-redirected to a destination in a shared volume:
-
-```commandline
-    pytest --basetemp=tests/tmp
 ```
