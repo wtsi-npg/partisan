@@ -330,7 +330,7 @@ this [Docker Compose issue](https://github.com/docker/compose/issues/2380) for
 more details.
 
 
-You can work around this by running exporting the relevant variable(s):
+You can work around this by exporting the relevant variable(s):
 
 ```commandline
     export UID
