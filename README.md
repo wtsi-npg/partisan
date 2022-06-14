@@ -297,7 +297,7 @@ should be on your `PATH` while running the tests. The iRODS authentication
 file can then be created using `iinit`: 
 
 ```commandline
-    export PATH="./tests/bin:$PATH"
+    export PATH="${PWD}/tests/bin:$PATH"
     iinit
 ```
 
