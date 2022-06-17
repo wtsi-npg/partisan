@@ -18,7 +18,6 @@
 # @author Keith James <kdj@sanger.ac.uk>
 
 import hashlib
-import tempfile
 from pathlib import Path
 
 from partisan import irods
