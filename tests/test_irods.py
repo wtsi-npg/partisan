@@ -26,7 +26,7 @@ from unittest.mock import patch
 import pytest
 from pytest import mark as m
 
-from partisan.exception import RodsError
+from partisan.exception import BatonError, RodsError
 from partisan.irods import (
     AC,
     AVU,
@@ -158,6 +158,16 @@ class TestCollection(object):
 
         assert coll.exists()
         assert coll.path == p
+
+    @m.describe("Disallow data object paths")
+    @m.context("When a Collection is made from a data object path")
+    @m.it("Raises an error if checking is enabled")
+    def test_make_collection_data_object_path(self, simple_data_object):
+        p = PurePath(simple_data_object)
+        Collection(p, check_type=False).exists()
+
+        with pytest.raises(BatonError, match="Invalid iRODS path"):
+            Collection(p, check_type=True).exists()
 
     @m.describe("Testing existence")
     @m.context("When a Collection exists")
@@ -386,6 +396,16 @@ class TestDataObject(object):
         assert obj.exists()
         assert obj.path == simple_data_object.parent
         assert obj.name == simple_data_object.name
+
+    @m.describe("Disallow collection paths")
+    @m.context("When a DataObject is made from a collection path")
+    @m.it("Raises an error if checking is enabled and a checked method called")
+    def test_make_data_object_collection_path(self, simple_collection):
+        p = PurePath(simple_collection)
+        DataObject(p, check_type=False).exists()
+
+        with pytest.raises(BatonError, match="Invalid iRODS path"):
+            DataObject(p).exists()
 
     @m.describe("Operations on an existing DataObject")
     @m.context("When a DataObject exists")

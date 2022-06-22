@@ -28,7 +28,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime
 from enum import Enum, unique
-from functools import total_ordering
+from functools import total_ordering, wraps
 from os import PathLike
 from pathlib import Path, PurePath
 from queue import LifoQueue, Queue
@@ -787,7 +787,7 @@ class AC(object):
 class AVU(object):
     """AVU is an iRODS attribute, value, units tuple.
 
-    AVUs may be sorted, where they will sorted lexically, first by
+    AVUs may be sorted, where they will be sorted lexically, first by
     namespace (if present), then by attribute, then by value and finally by
     units (if present).
     """
@@ -837,8 +837,7 @@ class AVU(object):
         """Returns a history AVU describing the argument AVUs. A history AVU is
         sometimes added to an iRODS path to describe AVUs that were once
         present, but have been removed. Adding a history AVU can act as a poor
-        man's audit trail and it used because iRODS does not have native
-        history support.
+        man's audit trail. It used because iRODS does not have native history support.
 
         Args:
             avus: AVUs removed, which must share the same attribute
@@ -1046,11 +1045,38 @@ class Replica(object):
         )
 
 
+def rods_type_check(method):
+    """Adds a check to RodsItem methods that ensures the item's path in iRODS has the
+    appropriate type. i.e. that a Collection has a collection path and a DataObject has
+    a data object path."""
+
+    @wraps(method)
+    def wrapper(*args, **kwargs):
+        item = args[0]
+        if item.check_type and not item.type_checked:
+            item.check_rods_type(**kwargs)
+            item.type_checked = True
+            return method(*args, **kwargs)
+        else:
+            return method(*args, **kwargs)
+
+    return wrapper
+
+
 class RodsItem(PathLike):
     """A base class for iRODS path entities."""
 
-    def __init__(self, path: Union[PurePath, str], pool=default_pool):
+    def __init__(self, path: Union[PurePath, str], check_type=False, pool=default_pool):
+        """
+        RodsItem constructor.
+        Args:
+            path: A remote path.
+            check_type: Check the remote path type if True, defaults to False.
+            pool: A baton client pool. Optional.
+        """
         self.path = PurePath(path)
+        self.check_type = check_type
+        self.type_checked = False
         self.pool = pool
 
     def __lt__(self, other):
@@ -1061,13 +1087,7 @@ class RodsItem(PathLike):
 
         return self.path < other.path
 
-    def exists(self, timeout=None, tries=1) -> bool:
-        """Return true if the item exists in iRODS.
-
-        Args:
-            timeout: Operation timeout in seconds.
-            tries: Number of times to try the operation.
-        """
+    def _exists(self, timeout=None, tries=1) -> bool:
         try:
             self._list(timeout=timeout, tries=tries)
         except RodsError as re:
@@ -1075,6 +1095,17 @@ class RodsItem(PathLike):
                 return False
         return True
 
+    @rods_type_check
+    def exists(self, timeout=None, tries=1) -> bool:
+        """Return true if the item exists in iRODS.
+
+        Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+        """
+        return self._exists(timeout=timeout, tries=tries)
+
+    @rods_type_check
     def add_metadata(self, *avus: Union[AVU, Tuple[AVU]], timeout=None, tries=1) -> int:
         """Add AVUs to the item's metadata, if they are not already present.
         Return the number of AVUs added.
@@ -1098,6 +1129,7 @@ class RodsItem(PathLike):
 
         return len(to_add)
 
+    @rods_type_check
     def remove_metadata(
         self, *avus: Union[AVU, Tuple[AVU]], timeout=None, tries=1
     ) -> int:
@@ -1123,6 +1155,7 @@ class RodsItem(PathLike):
 
         return len(to_remove)
 
+    @rods_type_check
     def supersede_metadata(
         self,
         *avus: Union[AVU, Tuple[AVU]],
@@ -1184,6 +1217,7 @@ class RodsItem(PathLike):
 
         return len(to_remove), len(to_add)
 
+    @rods_type_check
     def add_permissions(
         self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
     ) -> int:
@@ -1210,6 +1244,7 @@ class RodsItem(PathLike):
 
         return len(to_add)
 
+    @rods_type_check
     def remove_permissions(
         self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
     ) -> int:
@@ -1241,6 +1276,7 @@ class RodsItem(PathLike):
 
         return len(to_remove)
 
+    @rods_type_check
     def supersede_permissions(
         self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
     ) -> Tuple[int, int]:
@@ -1282,6 +1318,7 @@ class RodsItem(PathLike):
 
         return len(to_remove), len(to_add)
 
+    @rods_type_check
     def metadata(self, timeout=None, tries=1) -> List[AVU]:
         """Return the item's metadata.
 
@@ -1297,6 +1334,7 @@ class RodsItem(PathLike):
 
         return sorted(item[Baton.AVUS])
 
+    @rods_type_check
     def permissions(self, timeout=None, tries=1) -> List[AC]:
         """Return the item's Access Control List (ACL). Synonym for acl().
 
@@ -1324,6 +1362,12 @@ class RodsItem(PathLike):
         return sorted(item[Baton.ACCESS])
 
     @abstractmethod
+    def check_rods_type(self, **kwargs):
+        """Raise an error if the item does not have an appropriate type of iRODS path.
+        e.g. raise an error if a Collection object has the path of a data object."""
+        pass
+
+    @abstractmethod
     def get(self, local_path: Union[Path, str], **kwargs):
         """Get the item from iRODS."""
         pass
@@ -1348,8 +1392,20 @@ class DataObject(RodsItem):
     DataObject is a PathLike for the iRODS path it represents.
     """
 
-    def __init__(self, remote_path: Union[PurePath, str], pool=default_pool):
-        super().__init__(PurePath(remote_path).parent, pool=pool)
+    def __init__(
+        self,
+        remote_path: Union[PurePath, str],
+        check_type=True,
+        pool=default_pool,
+    ):
+        """
+        DataObject constructor.
+        Args:
+            remote_path: A remote data object path.
+            check_type: Check the remote path type if True, defaults to True.
+            pool: A baton client pool. Optional.
+        """
+        super().__init__(PurePath(remote_path).parent, check_type=check_type, pool=pool)
         self.name = PurePath(remote_path).name
 
     @classmethod
@@ -1389,6 +1445,21 @@ class DataObject(RodsItem):
         objs.sort()
         return objs
 
+    def check_rods_type(self, **kwargs):
+        timeout = kwargs.get("timeout", None)
+        tries = kwargs.get("tries", 1)
+
+        if not self._exists(timeout=timeout, tries=tries):
+            return
+
+        item = self._list(timeout=timeout, tries=tries).pop()
+        if Baton.OBJ not in item.keys():
+            raise BatonError(
+                f"Invalid iRODS path for a data object; the {Baton.OBJ} "
+                f"key is not in {item}, indicating a collection"
+            )
+
+    @rods_type_check
     def list(self, timeout=None, tries=1) -> DataObject:
         """Return a new DataObject representing this one.
 
@@ -1399,11 +1470,9 @@ class DataObject(RodsItem):
         Returns: DataObject
         """
         item = self._list(timeout=timeout, tries=tries).pop()
-        if Baton.OBJ not in item.keys():
-            raise BatonError(f"{Baton.OBJ} key missing from {item}")
-
         return _make_rods_item(item, pool=self.pool)
 
+    @rods_type_check
     def checksum(
         self,
         calculate_checksum=False,
@@ -1439,6 +1508,7 @@ class DataObject(RodsItem):
                 tries=tries,
             )
 
+    @rods_type_check
     def size(self, timeout=None, tries=1) -> int:
         """Return the size of the data object according to the iRODS IES database, in
         bytes.
@@ -1452,6 +1522,7 @@ class DataObject(RodsItem):
         item = self._list(size=True, timeout=timeout, tries=tries).pop()
         return item["size"]
 
+    @rods_type_check
     def timestamp(self, timeout=None, tries=1):
         """Return the timestamp of the data object according to the iRODS IES database.
 
@@ -1464,6 +1535,7 @@ class DataObject(RodsItem):
         # item = self._list(timestamp=True, timeout=timeout, tries=tries).pop()
         raise NotImplementedError()
 
+    @rods_type_check
     def replicas(self, timeout=None, tries=1) -> List[Replica]:
         """Return the replicas of the data object.
 
@@ -1478,6 +1550,7 @@ class DataObject(RodsItem):
         replicas.sort()
         return replicas
 
+    @rods_type_check
     def get(
         self, local_path: Union[Path, str], verify_checksum=True, timeout=None, tries=1
     ):
@@ -1533,6 +1606,7 @@ class DataObject(RodsItem):
                 tries=tries,
             )
 
+    @rods_type_check
     def read(self, timeout=None, tries=1) -> str:
         """Read the data object from iRODS into a string. This operation is supported
         for data objects containing UTF-8 text.
@@ -1597,8 +1671,17 @@ class Collection(RodsItem):
         colls.sort()
         return colls
 
-    def __init__(self, path: Union[PurePath, str], pool=default_pool):
-        super().__init__(path, pool=pool)
+    def __init__(
+        self, remote_path: Union[PurePath, str], check_type=True, pool=default_pool
+    ):
+        """
+        Collection constructor.
+        Args:
+            remote_path: A remote collection path.
+            check_type: Check the remote path type if True, defaults to True.
+            pool: A baton client pool. Optional.
+        """
+        super().__init__(remote_path, check_type=check_type, pool=pool)
 
     def create(self, parents=False, exist_ok=False, timeout=None, tries=1):
         """Create a new, empty Collection on the server side.
@@ -1616,6 +1699,21 @@ class Collection(RodsItem):
         with client(self.pool) as c:
             c.create_collection(item, parents=parents, timeout=timeout, tries=tries)
 
+    def check_rods_type(self, **kwargs):
+        timeout = kwargs.get("timeout", None)
+        tries = kwargs.get("tries", 1)
+
+        if not self._exists(timeout=timeout, tries=tries):
+            return
+
+        item = self._list(timeout=timeout, tries=tries).pop()
+        if Baton.OBJ in item.keys():
+            raise BatonError(
+                f"Invalid iRODS path for a collection; the {Baton.OBJ} "
+                f"key present in {item}, indicating a data object"
+            )
+
+    @rods_type_check
     def contents(
         self, acl=False, avu=False, recurse=False, timeout=None, tries=1
     ) -> List[Union[DataObject, Collection]]:
@@ -1661,6 +1759,7 @@ class Collection(RodsItem):
 
         return sorted(collect)
 
+    @rods_type_check
     def iter_contents(
         self, acl=False, avu=False, timeout=None, tries=1
     ) -> Iterable[Union[DataObject, Collection]]:
@@ -1687,21 +1786,26 @@ class Collection(RodsItem):
             yield elt
 
             if isinstance(elt, Collection):
-                yield from elt.iter_contents(acl, avu, timeout, tries)
+                yield from elt.iter_contents(
+                    acl=acl, avu=avu, timeout=timeout, tries=tries
+                )
 
+    @rods_type_check
     def list(self, acl=False, avu=False, timeout=None, tries=1) -> Collection:
         """Return a new Collection representing this one.
 
         Args:
           acl: Include ACL information.
           avu: Include AVU (metadata) information.
+          timeout: Operation timeout in seconds.
+          tries: Number of times to try the operation.
 
         Returns: Collection
         """
-        items = self._list(acl=acl, avu=avu, timeout=timeout, tries=tries)
-        # Gets a single item
-        return _make_rods_item(items.pop(), pool=self.pool)
+        item = self._list(acl=acl, avu=avu, timeout=timeout, tries=tries).pop()
+        return _make_rods_item(item, pool=self.pool)
 
+    @rods_type_check
     def get(self, local_path: Union[Path, str], **kwargs):
         """Get the collection and contents from iRODS and save to a local directory.
 
