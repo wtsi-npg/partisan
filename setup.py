@@ -19,14 +19,13 @@
 
 from pathlib import Path
 
-from setuptools import setup
+from setuptools import find_packages, setup
 
 project_root = Path(__file__).parent
 long_description = (project_root / "README.md").read_text()
 
 setup(
     name="partisan",
-    packages=["partisan"],
     url="https://github.com/kjsanger/partisan",
     license="GPL3",
     author="Keith James",
@@ -36,8 +35,10 @@ setup(
     long_description_content_type="text/markdown",
     use_scm_version=True,
     python_requires=">=3.9",
+    packages=find_packages("src"),
+    package_dir={"": "src"},
     setup_requires=["setuptools_scm"],
     install_requires=["structlog"],
-    tests_require=["pytest", "pytest-it"],
+    tests_require=["black", "pytest", "pytest-it"],
     scripts=[],
 )

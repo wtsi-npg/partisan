@@ -17,17 +17,19 @@
 #
 # @author Keith James <kdj@sanger.ac.uk>
 
+# From the pytest docs:
+#
+# "The conftest.py file serves as a means of providing fixtures for an entire
+# directory. Fixtures defined in a conftest.py can be used by any test in that
+# package without needing to import them (pytest will automatically discover
+# them)."
+
 from pathlib import PurePath
 
 import pytest
 
-from partisan.irods import (
-    AVU,
-    Baton,
-    Collection,
-)
 from partisan.icommands import have_admin, imkdir, iput, irm, mkgroup, rmgroup
-from partisan.metadata import ONTMetadata
+from partisan.irods import AVU, Collection, DataObject
 
 tests_have_admin = pytest.mark.skipif(
     not have_admin(), reason="tests do not have iRODS admin access"
@@ -69,6 +71,21 @@ def simple_collection(tmp_path):
 
 
 @pytest.fixture(scope="function")
+def annotated_collection(simple_collection):
+    """A fixture providing an annotated, empty collection"""
+
+    coll = Collection(simple_collection)
+    coll.add_metadata(
+        AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
+    )
+
+    try:
+        yield simple_collection
+    finally:
+        irm(simple_collection, force=True, recurse=True)
+
+
+@pytest.fixture(scope="function")
 def simple_data_object(tmp_path):
     """A fixture providing a collection containing a single data object containing
     UTF-8 data."""
@@ -82,6 +99,22 @@ def simple_data_object(tmp_path):
         yield obj_path
     finally:
         irm(root_path, force=True, recurse=True)
+
+
+@pytest.fixture(scope="function")
+def annotated_data_object(simple_data_object):
+    """A fixture providing a collection containing a single, annotated data object
+    containing UTF-8 data."""
+
+    obj = DataObject(simple_data_object)
+    obj.add_metadata(
+        AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
+    )
+
+    try:
+        yield simple_data_object
+    finally:
+        irm(simple_data_object, force=True, recurse=True)
 
 
 @pytest.fixture(scope="function")
@@ -102,65 +135,3 @@ def ont_gridion(tmp_path):
     finally:
         irm(root_path, force=True, recurse=True)
         remove_test_groups()
-
-
-@pytest.fixture(scope="function")
-def ont_synthetic(tmp_path, baton_session):
-    root_path = PurePath("/testZone/home/irods/test")
-    rods_path = add_rods_path(root_path, tmp_path)
-
-    iput("./tests/data/ont/synthetic", rods_path, recurse=True)
-    expt_root = PurePath(rods_path, "synthetic")
-
-    avus = [
-        avu.with_namespace(ONTMetadata.namespace)
-        for avu in [
-            AVU(ONTMetadata.EXPERIMENT_NAME.value, "simple_experiment_001"),
-            AVU(ONTMetadata.INSTRUMENT_SLOT.value, "1"),
-        ]
-    ]
-
-    Collection(
-        baton_session,
-        PurePath(
-            expt_root,
-            "simple_experiment_001",
-            "20190904_1514_GA10000_flowcell011_69126024",
-        ),
-    ).meta_add(*avus)
-
-    avus = [
-        avu.with_namespace(ONTMetadata.namespace)
-        for avu in [
-            AVU(ONTMetadata.EXPERIMENT_NAME.value, "multiplexed_experiment_001"),
-            AVU(ONTMetadata.INSTRUMENT_SLOT.value, "1"),
-        ]
-    ]
-
-    Collection(
-        baton_session,
-        PurePath(
-            expt_root,
-            "multiplexed_experiment_001",
-            "20190904_1514_GA10000_flowcell101_cf751ba1",
-        ),
-    ).meta_add(*avus)
-
-    try:
-        add_test_groups()
-
-        yield expt_root
-    finally:
-        irm(root_path, force=True, recurse=True)
-        remove_test_groups()
-
-
-@pytest.fixture(scope="function")
-def baton_session():
-    client = Baton()
-    client.start()
-
-    try:
-        yield client
-    finally:
-        client.stop()

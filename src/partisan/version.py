@@ -26,5 +26,5 @@ except importlib.metadata.PackageNotFoundError:
 
 
 def version() -> str:
-    """Return the current version"""
+    """Return the current version."""
     return __version__

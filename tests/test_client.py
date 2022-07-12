@@ -19,14 +19,7 @@
 
 from pytest import mark as m
 
-from partisan.irods import Baton, Collection
-from irods_fixture import (
-    baton_session,
-    simple_collection,
-)
-
-_ = baton_session
-_ = simple_collection
+from partisan.irods import Baton
 
 
 @m.describe("Baton")
@@ -34,29 +27,45 @@ class TestBatonClient(object):
     @m.context("When created")
     @m.it("Is not running")
     def test_create_baton_client(self):
-        client = Baton()
-        assert not client.is_running()
+        c = Baton()
+        assert not c.is_running()
 
     @m.it("Can be started and stopped")
     def test_start_baton_client(self):
-        client = Baton()
-        client.start()
-        assert client.is_running()
-        client.stop()
-        assert not client.is_running()
+        c = Baton()
+        c.start()
+        assert c.is_running()
+        c.stop()
+        assert not c.is_running()
 
     @m.context("When stopped")
     @m.it("Can be re-started")
-    def test_restart_baton_client(self, simple_collection):
-        client = Baton()
-        client.start()
-        assert client.is_running()
-        client.stop()
-        assert not client.is_running()
+    def test_restart_baton_client(self):
+        c = Baton()
+        c.start()
+        assert c.is_running()
+        c.stop()
+        assert not c.is_running()
+
         # Re-start
-        client.start()
-        assert client.is_running()
-        # Try an operation
-        coll = Collection(client, simple_collection)
-        assert coll.exists()
-        client.stop()
+        c.start()
+        assert c.is_running()
+        c.stop()
+        assert not c.is_running()
+
+    @m.context("When running")
+    @m.it("Can handle a sequence of requests on one connection")
+    def test_multiple_requests(self, simple_collection):
+        c = Baton()
+        c.start()
+        assert c.is_running()
+        pid = c.pid()
+
+        c.list({Baton.COLL: simple_collection})
+        c.list({Baton.COLL: simple_collection})
+        c.list({Baton.COLL: simple_collection})
+
+        assert c.is_running()
+        assert c.pid() == pid
+        c.stop()
+        assert not c.is_running()
