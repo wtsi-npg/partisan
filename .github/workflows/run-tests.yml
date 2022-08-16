@@ -22,12 +22,12 @@ jobs:
           # iRODS 4.2.11 clients vs 4.2.7 server
           - irods: "4.2.11"
             server_image: "wsinpg/ub-16.04-irods-4.2.7:latest"
-            baton: "3.3.0"
+            baton: "4.0.0"
             experimental: false
           # iRODS 4.2.11 clients vs 4.2.11 server
           - irods: "4.2.11"
             server_image: "wsinpg/ub-18.04-irods-4.2.11:latest"
-            baton: "3.3.0"
+            baton: "4.0.0"
             experimental: false
 
     services:
