@@ -1106,12 +1106,12 @@ class RodsItem(PathLike):
         return self._exists(timeout=timeout, tries=tries)
 
     @rods_type_check
-    def add_metadata(self, *avus: Union[AVU, Tuple[AVU]], timeout=None, tries=1) -> int:
+    def add_metadata(self, *avus: AVU, timeout=None, tries=1) -> int:
         """Add AVUs to the item's metadata, if they are not already present.
         Return the number of AVUs added.
 
         Args:
-            *avus: AVUs to add.
+            *avus: One or more AVUs to add.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 

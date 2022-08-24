@@ -14,5 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
  - Update baton version in github actions workflow to 4.0.0
 
+### Fixed
+ - Typehint for add_metadata implied an explicit tuple could be passed
+
 ## [1.0.0]
 
