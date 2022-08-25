@@ -671,7 +671,7 @@ default_pool: Annotated[BatonPool, "The default client pool"] = _default_pool_in
 
 
 def query_metadata(
-    *avus: Union[AVU, Tuple[AVU]],
+    *avus: AVU,
     zone=None,
     collection=True,
     data_object=True,
@@ -683,7 +683,7 @@ def query_metadata(
     Query all metadata in iRODS (i.e. both on collections and data objects)
 
     Args:
-        *avus: AVUs to query.
+        *avus: One or more AVUs to query.
         zone: Zone hint for the query. Defaults to None (query the current zone).
         collection: Query the collection namespace. Defaults to True.
         data_object: Query the data object namespace. Defaults to True.
@@ -815,13 +815,13 @@ class AVU(object):
         self._units = units
 
     @classmethod
-    def collate(cls, *avus) -> Dict[str : List[AVU]]:
+    def collate(cls, *avus: AVU) -> Dict[str : List[AVU]]:
         """Collates AVUs by attribute (including namespace, if any) and
         returns a dict mapping the attribute to a list of AVUs with that
         attribute.
 
         Args:
-            avus: AVUs to collate.
+            avus: One or more AVUs to collate.
 
         Returns: Dict[str: List[AVU]]
         """
@@ -833,7 +833,7 @@ class AVU(object):
         return collated
 
     @classmethod
-    def history(cls, *avus, history_date=None) -> AVU:
+    def history(cls, *avus: AVU, history_date=None) -> AVU:
         """Returns a history AVU describing the argument AVUs. A history AVU is
         sometimes added to an iRODS path to describe AVUs that were once
         present, but have been removed. Adding a history AVU can act as a poor
@@ -1106,12 +1106,12 @@ class RodsItem(PathLike):
         return self._exists(timeout=timeout, tries=tries)
 
     @rods_type_check
-    def add_metadata(self, *avus: Union[AVU, Tuple[AVU]], timeout=None, tries=1) -> int:
+    def add_metadata(self, *avus: AVU, timeout=None, tries=1) -> int:
         """Add AVUs to the item's metadata, if they are not already present.
         Return the number of AVUs added.
 
         Args:
-            *avus: AVUs to add.
+            *avus: One or more AVUs to add.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1130,14 +1130,12 @@ class RodsItem(PathLike):
         return len(to_add)
 
     @rods_type_check
-    def remove_metadata(
-        self, *avus: Union[AVU, Tuple[AVU]], timeout=None, tries=1
-    ) -> int:
+    def remove_metadata(self, *avus: AVU, timeout=None, tries=1) -> int:
         """Remove AVUs from the item's metadata, if they are present.
         Return the number of AVUs removed.
 
         Args:
-            *avus: AVUs to remove.
+            *avus: One or more AVUs to remove.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1158,7 +1156,7 @@ class RodsItem(PathLike):
     @rods_type_check
     def supersede_metadata(
         self,
-        *avus: Union[AVU, Tuple[AVU]],
+        *avus: AVU,
         history=False,
         history_date=None,
         timeout=None,
@@ -1170,8 +1168,8 @@ class RodsItem(PathLike):
          history AVUs created.
 
          Args:
-             avus: AVUs to add in place of existing AVUs sharing those
-             attributes.
+             avus: One or more AVUs to add in place of existing AVUs sharing
+             those attributes.
              history: Create history AVUs describing any AVUs removed when
              superseding. See AVU.history.
              history_date: A datetime to be embedded as part of the history
@@ -1218,15 +1216,13 @@ class RodsItem(PathLike):
         return len(to_remove), len(to_add)
 
     @rods_type_check
-    def add_permissions(
-        self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
-    ) -> int:
+    def add_permissions(self, *acs: AC, recurse=False, timeout=None, tries=1) -> int:
         """Add access controls to the item. Return the number of access
         controls added. If some argument access controls are already present,
         those arguments will be ignored.
 
         Args:
-            acs: Access controls.
+            *acs: Access controls.
             recurse: Recursively add access control.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1245,15 +1241,13 @@ class RodsItem(PathLike):
         return len(to_add)
 
     @rods_type_check
-    def remove_permissions(
-        self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
-    ) -> int:
+    def remove_permissions(self, *acs: AC, recurse=False, timeout=None, tries=1) -> int:
         """Remove access controls from the item. Return the number of access
         controls removed. If some argument access controls are not present, those
         arguments will be ignored.
 
         Args:
-            acs: Access controls.
+            *acs: Access controls.
             recurse: Recursively add access control.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1278,14 +1272,14 @@ class RodsItem(PathLike):
 
     @rods_type_check
     def supersede_permissions(
-        self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
+        self, *acs: AC, recurse=False, timeout=None, tries=1
     ) -> Tuple[int, int]:
         """Remove all access controls from the item, replacing them with the
         specified access controls. Return the numbers of access controls
         removed and added.
 
         Args:
-            acs: Access controls.
+            *acs: Access controls.
             recurse: Recursively supersede access controls.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1411,7 +1405,7 @@ class DataObject(RodsItem):
     @classmethod
     def query_metadata(
         cls,
-        *avus: Union[AVU, Tuple[AVU]],
+        *avus: AVU,
         zone=None,
         timeout=None,
         tries=1,
@@ -1421,7 +1415,7 @@ class DataObject(RodsItem):
         Query data object metadata in iRODS.
 
         Args:
-            *avus: AVUs to query.
+            *avus: One or more AVUs to query.
             zone: Zone hint for the query. Defaults to None (query the current zone).
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1651,7 +1645,7 @@ class Collection(RodsItem):
     @classmethod
     def query_metadata(
         cls,
-        *avus: Union[AVU, Tuple[AVU]],
+        *avus: AVU,
         zone=None,
         timeout=None,
         tries=1,
