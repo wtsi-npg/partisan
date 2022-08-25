@@ -683,7 +683,7 @@ def query_metadata(
     Query all metadata in iRODS (i.e. both on collections and data objects)
 
     Args:
-        *avus: One or moreAVUs to query.
+        *avus: One or more AVUs to query.
         zone: Zone hint for the query. Defaults to None (query the current zone).
         collection: Query the collection namespace. Defaults to True.
         data_object: Query the data object namespace. Defaults to True.
@@ -1216,15 +1216,13 @@ class RodsItem(PathLike):
         return len(to_remove), len(to_add)
 
     @rods_type_check
-    def add_permissions(
-        self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
-    ) -> int:
+    def add_permissions(self, *acs: AC, recurse=False, timeout=None, tries=1) -> int:
         """Add access controls to the item. Return the number of access
         controls added. If some argument access controls are already present,
         those arguments will be ignored.
 
         Args:
-            acs: Access controls.
+            *acs: Access controls.
             recurse: Recursively add access control.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1243,15 +1241,13 @@ class RodsItem(PathLike):
         return len(to_add)
 
     @rods_type_check
-    def remove_permissions(
-        self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
-    ) -> int:
+    def remove_permissions(self, *acs: AC, recurse=False, timeout=None, tries=1) -> int:
         """Remove access controls from the item. Return the number of access
         controls removed. If some argument access controls are not present, those
         arguments will be ignored.
 
         Args:
-            acs: Access controls.
+            *acs: Access controls.
             recurse: Recursively add access control.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1276,14 +1272,14 @@ class RodsItem(PathLike):
 
     @rods_type_check
     def supersede_permissions(
-        self, *acs: Union[AC, Tuple[AC]], recurse=False, timeout=None, tries=1
+        self, *acs: AC, recurse=False, timeout=None, tries=1
     ) -> Tuple[int, int]:
         """Remove all access controls from the item, replacing them with the
         specified access controls. Return the numbers of access controls
         removed and added.
 
         Args:
-            acs: Access controls.
+            *acs: Access controls.
             recurse: Recursively supersede access controls.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1649,7 +1645,7 @@ class Collection(RodsItem):
     @classmethod
     def query_metadata(
         cls,
-        *avus: Union[AVU, Tuple[AVU]],
+        *avus: AVU,
         zone=None,
         timeout=None,
         tries=1,
