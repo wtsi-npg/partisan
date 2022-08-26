@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021 Genome Research Ltd. All rights reserved.
+# Copyright © 2020, 2021, 2022 Genome Research Ltd. All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,8 +21,11 @@ import subprocess
 from pathlib import PurePath
 from typing import List, Union
 
+from structlog import get_logger
+
 from partisan.exception import RodsError
-from partisan.irods import log
+
+log = get_logger(__name__)
 
 
 def mkgroup(name: str):

@@ -45,7 +45,7 @@ from partisan.exception import (
     RodsError,
 )
 
-log = get_logger(__package__)
+log = get_logger(__name__)
 
 """This module provides a basic API for accessing iRODS using the native
 iRODS client 'baton' (https://github.com/wtsi-npg/baton).
