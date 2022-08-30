@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
  - Structlog default configuration
+ - Custom stringification for AsValueEnum
+ - Namespace for DublinCore enum stringification
 
 ### Removed
  - Remove iRODS 4.2.10 from GitHub actions workflow
