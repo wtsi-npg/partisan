@@ -24,14 +24,10 @@ language-agnostic iRODS client with a JSON interface. This means that
 `partisan`
 
 - Has guaranteed compatibility with released iRODS versions. `partisan` uses
-  the official iRODS C API (via `baton`). At the time of writing, the current
-  iRODS version is `4.2.10`, which the current version `1.0` of
-  `python-irodsclient` [does not support](https://github.com/irods/python-irodsclient/issues/285)
-  .
+  the official iRODS C API (via `baton`).
 
-- Supports parallel data object `put` operations. `python-irodsclient`
-  implements `put` by a single-threaded open/write/close operation.
-  Parallel `put` reduces significantly the upload time for multi-GiB files.
+- Supports improved speed for data object `put` operations. `python-irodsclient`
+  in our hands is 3-4x slower than iRODS C API `put` for multi-GB files.
 
 - Supports federation fully and transparently. `python-irodsclient` is not yet
   able to do this [for collections](https://github.com/irods/python-irodsclient/issues/173)

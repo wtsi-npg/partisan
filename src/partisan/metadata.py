@@ -40,7 +40,7 @@ def with_namespace(ns: str):
     """
 
     class WithNamespace(EnumMeta):
-        """Metaclass adding a 'namespace' property an Enum"""
+        """Metaclass adding a 'namespace' property to an Enum"""
 
         @property
         def namespace(self):
@@ -50,10 +50,14 @@ def with_namespace(ns: str):
 
 
 class AsValueEnum(Enum):
-    """An Enum whose member representation is equal to their value attribute."""
+    """An Enum whose member representation and string are equal to their value
+    attribute."""
 
     def __repr__(self):
         return self.value
+
+    def __str__(self):
+        return str(self.__repr__())
 
 
 @unique
@@ -68,3 +72,6 @@ class DublinCore(AsValueEnum, metaclass=with_namespace("dcterms")):
     MODIFIED = "modified"
     PUBLISHER = "publisher"
     TITLE = "title"
+
+    def __repr__(self):
+        return f"{DublinCore.namespace}:{self.value}"
