@@ -34,11 +34,11 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     use_scm_version=True,
-    python_requires=">=3.9",
+    python_requires=">=3.10",
     packages=find_packages("src"),
     package_dir={"": "src"},
     setup_requires=["setuptools_scm"],
-    install_requires=["structlog"],
+    install_requires=["python-dateutil", "structlog"],
     tests_require=["black", "pytest", "pytest-it"],
     scripts=[],
 )
