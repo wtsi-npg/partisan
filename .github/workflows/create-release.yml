@@ -21,7 +21,8 @@ jobs:
       - name: "Set up Python"
         uses: actions/setup-python@v3
         with:
-          python-version: '3.9'
+          python-version: "3.10"
+          architecture: "x64"
 
       - name: "Install Dependencies"
         run: |
@@ -33,13 +34,13 @@ jobs:
 
       - name: "Get release variables"
         run: |
-          echo PARTISAN_VERSION=$(git describe --always --tags --dirty) >> $GITHUB_ENV
+          echo RELEASE_VERSION=$(git describe --always --tags --dirty) >> $GITHUB_ENV
           echo MASTER_SHA=$(git rev-parse origin/master) >> $GITHUB_ENV
 
       - name: "Create Release"
         uses: ncipollo/release-action@v1.10.0
         with:
-          name: ${{ env.PARTISAN_VERSION }}
+          name: ${{ env.RELEASE_VERSION }}
           prerelease: ${{ !(github.sha == env.MASTER_SHA) }}
           artifacts: "dist/*.tar.gz"
           removeArtifacts: true

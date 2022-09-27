@@ -33,8 +33,9 @@ from os import PathLike
 from pathlib import Path, PurePath
 from queue import LifoQueue, Queue
 from threading import Thread
-from typing import Annotated, Any, Dict, List, Tuple, Union, Iterable
+from typing import Annotated, Any, Dict, Iterable, List, Tuple, Union
 
+import dateutil.parser
 from structlog import get_logger
 
 from partisan.exception import (
@@ -72,12 +73,25 @@ class Baton:
     OWNER = "owner"
     LEVEL = "level"
 
+    DIR = "directory"
+    FILE = "file"
+    SIZE = "size"
+
+    REPLICAS = "replicates"  # Replicas is the newer iRODS terminology
+    RESOURCE = "resource"
+    LOCATION = "location"
+    CHECKSUM = "checksum"
+    NUMBER = "number"
+
+    TIMESTAMPS = "timestamps"
+    CREATED = "created"
+    MODIFIED = "modified"
+
     CHMOD = "chmod"
     LIST = "list"
     MKDIR = "mkdir"
     GET = "get"
     PUT = "put"
-    CHECKSUM = "checksum"
     METAQUERY = "metaquery"
 
     METAMOD = "metamod"
@@ -364,8 +378,8 @@ class Baton:
                 f"{Baton.CLIENT} does not support get without forced overwriting"
             )
 
-        item["directory"] = local_path.parent
-        item["file"] = local_path.name
+        item[Baton.DIR] = local_path.parent
+        item[Baton.FILE] = local_path.name
 
         self._execute(
             Baton.GET,
@@ -416,8 +430,8 @@ class Baton:
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
-        item["directory"] = local_path.parent
-        item["file"] = local_path.name
+        item[Baton.DIR] = local_path.parent
+        item[Baton.FILE] = local_path.name
 
         self._execute(
             Baton.PUT,
@@ -978,8 +992,21 @@ class AVU(object):
 
 @total_ordering
 class Replica(object):
+    """An iRODS data object replica.
+
+    iRODS may maintain multiple copies of the data backing a data object. Each one of
+    these as modeled as a Replica instance. Every data object has at least one Replica.
+    """
+
     def __init__(
-        self, resource: str, location: str, number: int, checksum=None, valid=True
+        self,
+        resource: str,
+        location: str,
+        number: int,
+        created=None,
+        modified=None,
+        checksum=None,
+        valid=True,
     ):
 
         if resource is None:
@@ -990,6 +1017,8 @@ class Replica(object):
         self.resource = resource
         self.location = location
         self.number = number
+        self.created = created
+        self.modified = modified
         self.checksum = checksum
         self.valid = valid
 
@@ -1005,6 +1034,10 @@ class Replica(object):
     def __eq__(self, other):
         if not isinstance(other, Replica):
             return False
+
+        # Timestamps are intentionally not included in checking equality because they
+        # do not affect replica identity (defined by resource, location, number and
+        # whether they are valid)
 
         return (
             self.number == other.number
@@ -1041,6 +1074,7 @@ class Replica(object):
     def __str__(self):
         return (
             f"<Replica {self.number} {self.resource} checksum={self.checksum} "
+            f"created={self.created} modified={self.modified} "
             f"valid={self.valid}>"
         )
 
@@ -1323,7 +1357,7 @@ class RodsItem(PathLike):
         Returns: List[AVU]
         """
         item = self._list(avu=True, timeout=timeout, tries=tries).pop()
-        if Baton.AVUS not in item.keys():
+        if Baton.AVUS not in item:
             raise BatonError(f"{Baton.AVUS} key missing from {item}")
 
         return sorted(item[Baton.AVUS])
@@ -1350,7 +1384,7 @@ class RodsItem(PathLike):
         Returns: List[AC]
         """
         item = self._list(acl=True, timeout=timeout, tries=tries).pop()
-        if Baton.ACCESS not in item.keys():
+        if Baton.ACCESS not in item:
             raise BatonError(f"{Baton.ACCESS} key missing from {item}")
 
         return sorted(item[Baton.ACCESS])
@@ -1447,7 +1481,7 @@ class DataObject(RodsItem):
             return
 
         item = self._list(timeout=timeout, tries=tries).pop()
-        if Baton.OBJ not in item.keys():
+        if Baton.OBJ not in item:
             raise BatonError(
                 f"Invalid iRODS path for a data object; the {Baton.OBJ} "
                 f"key is not in {item}, indicating a collection"
@@ -1514,20 +1548,62 @@ class DataObject(RodsItem):
         Returns: int
         """
         item = self._list(size=True, timeout=timeout, tries=tries).pop()
-        return item["size"]
+        return item[Baton.SIZE]
 
     @rods_type_check
-    def timestamp(self, timeout=None, tries=1):
-        """Return the timestamp of the data object according to the iRODS IES database.
+    def timestamp(self, timeout=None, tries=1) -> datetime:
+        """Return the timestamp of the data object according to the iRODS IES
+        database. This is a synonym for the `modified` method.
 
         Args:
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: datetime
+        Returns: The data object's earliest modification timestamp
         """
-        # item = self._list(timestamp=True, timeout=timeout, tries=tries).pop()
-        raise NotImplementedError()
+        return self.modified(timeout=timeout, tries=tries)
+
+    def created(self, timeout=None, tries=1):
+        """Return the creation timestamp of the data object according to the
+        iRODS IES database.
+
+        There exist in the IES a creation timestamp and a modification timestamp for
+        each replica. This method returns the creation timestamp.
+
+        If the data object has more than ore replica, the earliest of the
+        created timestamps is returned. The rationale for this is that the
+        earliest timestamp is likely to be the time at which creation was
+        initiated and any later timestamps, the time at which other replicas were
+        made consistent.
+
+        Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: The data object's earliest creation timestamp
+        """
+        return min([r.created for r in self.replicas(timeout=timeout, tries=tries)])
+
+    def modified(self, timeout=None, tries=1) -> datetime:
+        """Return the modification timestamp of the data object according to the
+        iRODS IES database.
+
+        There exist in the IES a creation timestamp and a modification timestamp for
+        each replica. This method returns the modification timestamp.
+
+        If the data object has more than ore replica, the earliest of the
+        modification timestamps is returned. The rationale for this is that the
+        earliest timestamp is likely to be the time at which modification was
+        initiated and any later timestamps, the time at which other replicas were
+        made consistent.
+
+        Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: The data object's earliest modified timestamp
+        """
+        return min([r.modified for r in self.replicas(timeout=timeout, tries=tries)])
 
     @rods_type_check
     def replicas(self, timeout=None, tries=1) -> List[Replica]:
@@ -1537,11 +1613,53 @@ class DataObject(RodsItem):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: List[Replica]
+        Returns: The object's replicas
         """
+
         item = self._list(replicas=True, timeout=timeout, tries=tries).pop()
-        replicas = [Replica(**args) for args in item["replicates"]]
+        if Baton.REPLICAS not in item:
+            raise BatonError(f"{Baton.REPLICAS} key missing from {item}")
+
+        rep_args = {}
+        for rep_val in item[Baton.REPLICAS]:
+            match rep_val:
+                case {Baton.NUMBER: n}:
+                    rep_args[n] = rep_val
+                case _:
+                    raise BatonError(f"{Baton.NUMBER} key missing from {rep_val}")
+
+        # Getting timestamps from baton currently requires a separate call from
+        # getting replica information. The JSON property returned is (for two
+        # replicas, in this example), of the form:
+        #
+        # 'timestamps': [{'created': '2022-09-09T11:11:03Z', 'replicates': 0},
+        #                {'modified': '2022-09-09T11:11:03Z', 'replicates': 0},
+        #                {'created': '2022-09-09T11:11:03Z', 'replicates': 1},
+        #                {'modified': '2022-09-09T11:11:03Z', 'replicates': 1}]}
+
+        item = self._list(timestamp=True, timeout=timeout, tries=tries).pop()
+        if Baton.TIMESTAMPS not in item:
+            raise BatonError(f"{Baton.TIMESTAMPS} key missing from {item}")
+
+        for ts_val in item[Baton.TIMESTAMPS]:
+            if Baton.REPLICAS not in ts_val:
+                raise BatonError(f"{Baton.REPLICAS} key missing from {ts_val}")
+            rep_num = ts_val[Baton.REPLICAS]
+
+            match ts_val:
+                case {Baton.CREATED: t}:
+                    rep_args[rep_num][Baton.CREATED] = dateutil.parser.isoparse(t)
+                case {Baton.MODIFIED: t}:
+                    rep_args[rep_num][Baton.MODIFIED] = dateutil.parser.isoparse(t)
+                case _:
+                    raise BatonError(
+                        f"{Baton.CREATED}/{Baton.MODIFIED} key missing "
+                        f"from {ts_val}"
+                    )
+
+        replicas = [Replica(**args) for args in rep_args.values()]
         replicas.sort()
+
         return replicas
 
     @rods_type_check
@@ -1701,7 +1819,7 @@ class Collection(RodsItem):
             return
 
         item = self._list(timeout=timeout, tries=tries).pop()
-        if Baton.OBJ in item.keys():
+        if Baton.OBJ in item:
             raise BatonError(
                 f"Invalid iRODS path for a collection; the {Baton.OBJ} "
                 f"key present in {item}, indicating a data object"
@@ -1905,9 +2023,9 @@ def _make_rods_item(item: Dict, pool: BatonPool) -> Union[DataObject, Collection
 
     Returns: Union[DataObject, Collection]
     """
-    if Baton.COLL not in item.keys():
+    if Baton.COLL not in item:
         raise BatonError(f"{Baton.COLL} key missing from {item}")
 
-    if Baton.OBJ in item.keys():
+    if Baton.OBJ in item:
         return DataObject(PurePath(item[Baton.COLL], item[Baton.OBJ]), pool=pool)
     return Collection(PurePath(item[Baton.COLL]), pool=pool)

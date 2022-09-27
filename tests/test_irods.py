@@ -494,6 +494,26 @@ class TestDataObject(object):
             assert r.checksum == "39a4aa291ca849d601e4e5b8ed627a04"
             assert r.valid
 
+    @m.it("Has a creation timestamp equal to the earliest replica creation time")
+    def test_creation_timestamp(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+
+        assert obj.created() == min([o.created for o in obj.replicas()])
+
+    @m.it(
+        "Has a modification timestamp equal to the earliest replica modification time"
+    )
+    def test_modification_timestamp(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+
+        assert obj.timestamp() == min([o.modified for o in obj.replicas()])
+
+    @m.it("Has a timestamp equal to the earliest replica modification time")
+    def test_timestamp(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+
+        assert obj.timestamp() == min([o.modified for o in obj.replicas()])
+
     @m.it("Can be overwritten")
     def test_overwrite_data_object(self, tmp_path, simple_data_object):
         obj = DataObject(simple_data_object)
