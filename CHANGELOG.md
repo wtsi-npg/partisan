@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0]
+
+### Added
+ -  Support for created/modified timestamps on DataObjects and Replicas
+
+### Changed
+ - Require Python >= 3.10
+ - Update pytest from 7.1.2 to 7.1.3
+
 ## [1.1.0]
 
 ### Added
