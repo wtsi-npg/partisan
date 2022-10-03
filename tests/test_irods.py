@@ -26,6 +26,7 @@ from unittest.mock import patch
 import pytest
 from pytest import mark as m
 
+import partisan
 from partisan.exception import BatonError, RodsError
 from partisan.irods import (
     AC,
@@ -34,7 +35,9 @@ from partisan.irods import (
     Collection,
     DataObject,
     Permission,
+    make_rods_item,
     query_metadata,
+    rods_path_type,
 )
 
 
@@ -135,6 +138,24 @@ class TestAVU(object):
         x.sort()
 
         assert x == [AVU("x", 1, "cm"), AVU("x", 1, "km"), AVU("x", 1, "mm")]
+
+
+@m.describe("RodsPath")
+class TestRodsPath(object):
+    @m.describe("Support for iRODS path inspection")
+    @m.context("When a collection path exists")
+    @m.it("Is identified as a collection")
+    def test_collection_path_type(self, simple_collection):
+        assert rods_path_type(simple_collection) == partisan.irods.Collection
+        assert make_rods_item(simple_collection) == Collection(simple_collection)
+        assert Collection(simple_collection).rods_type == partisan.irods.Collection
+
+    @m.context("When a data object path exists")
+    @m.it("Is identified as a data object")
+    def test_data_object_path_type(self, simple_data_object):
+        assert rods_path_type(simple_data_object) == partisan.irods.DataObject
+        assert make_rods_item(simple_data_object) == DataObject(simple_data_object)
+        assert DataObject(simple_data_object).rods_type == partisan.irods.DataObject
 
 
 @m.describe("Collection")

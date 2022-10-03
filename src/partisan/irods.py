@@ -20,6 +20,7 @@
 from __future__ import annotations  # Will not be needed in Python 3.10
 
 import atexit
+import functools
 import json
 import subprocess
 import threading
@@ -33,7 +34,7 @@ from os import PathLike
 from pathlib import Path, PurePath
 from queue import LifoQueue, Queue
 from threading import Thread
-from typing import Annotated, Any, Dict, Iterable, List, Tuple, Union
+from typing import Annotated, Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import dateutil.parser
 from structlog import get_logger
@@ -1080,29 +1081,90 @@ class Replica(object):
 
 
 def rods_type_check(method):
-    """Adds a check to RodsItem methods that ensures the item's path in iRODS has the
+    """Add a check to RodsItem methods that ensures the item's path in iRODS has the
     appropriate type. i.e. that a Collection has a collection path and a DataObject has
     a data object path."""
 
     @wraps(method)
     def wrapper(*args, **kwargs):
         item = args[0]
-        if item.check_type and not item.type_checked:
-            item.check_rods_type(**kwargs)
-            item.type_checked = True
-            return method(*args, **kwargs)
-        else:
-            return method(*args, **kwargs)
+        item.check_rods_type(**kwargs)
+        return method(*args, **kwargs)
 
     return wrapper
+
+
+def rods_path_exists(
+    path: Union[PurePath, str], timeout=None, tries=1, pool=default_pool
+) -> bool:
+    """Return true if the specified path is a collection or data object in iRODS.
+
+    Args:
+        path: A remote path.
+        timeout: Operation timeout in seconds.
+        tries: Number of times to try the operation.
+        pool: A baton client pool. Optional.
+
+    Returns:
+        True if the path exists.
+    """
+    return rods_path_type(path, timeout=timeout, tries=tries, pool=pool) is not None
+
+
+def rods_path_type(
+    path: Union[PurePath, str], timeout=None, tries=1, pool=default_pool
+) -> Optional[Type[RodsItem]]:
+    """Return a Python type representing the kind of iRODS path supplied,
+    e.g. Collection for and iRODS collection, DataObject for an iRODS data object. If
+    the path does not exist, returns None.
+
+    Args:
+        path: A remote path.
+        timeout: Operation timeout in seconds.
+        tries: Number of times to try the operation.
+        pool: A baton client pool. Optional.
+
+    Returns:
+        Union[DataObject, Collection], or None.
+    """
+    try:
+        with client(pool) as c:
+            match c.list({Baton.COLL: path}, timeout=timeout, tries=tries):
+                case [{Baton.COLL: _, Baton.OBJ: _}]:
+                    return DataObject
+                case [{Baton.COLL: _}]:
+                    return Collection
+                case [item]:
+                    raise ValueError(f"Failed to recognised client response {item}")
+    except RodsError as re:
+        if re.code == -310000:  # iRODS error code for path not found
+            return None
+        raise re
+
+
+def make_rods_item(
+    path: Union[PurePath, str], pool=default_pool
+) -> Union[Collection, DataObject]:
+    """A factory function for iRODS items.
+
+    Args:
+        path: A remote path.
+        pool: A baton client pool. Optional.
+
+    Returns:
+        A Collection or DataObject, as appropriate.
+    """
+    with client(pool) as c:
+        item = c.list({Baton.COLL: path}).pop()
+        return _make_rods_item(item, pool=pool)
 
 
 class RodsItem(PathLike):
     """A base class for iRODS path entities."""
 
     def __init__(self, path: Union[PurePath, str], check_type=False, pool=default_pool):
-        """
-        RodsItem constructor.
+        """RodsItem constructor.
+
         Args:
             path: A remote path.
             check_type: Check the remote path type if True, defaults to False.
@@ -1110,16 +1172,7 @@ class RodsItem(PathLike):
         """
         self.path = PurePath(path)
         self.check_type = check_type
-        self.type_checked = False
         self.pool = pool
-
-    def __lt__(self, other):
-        if isinstance(self, Collection) and isinstance(other, DataObject):
-            return True
-        if isinstance(self, DataObject) and isinstance(other, Collection):
-            return False
-
-        return self.path < other.path
 
     def _exists(self, timeout=None, tries=1) -> bool:
         try:
@@ -1362,7 +1415,6 @@ class RodsItem(PathLike):
 
         return sorted(item[Baton.AVUS])
 
-    @rods_type_check
     def permissions(self, timeout=None, tries=1) -> List[AC]:
         """Return the item's Access Control List (ACL). Synonym for acl().
 
@@ -1374,6 +1426,7 @@ class RodsItem(PathLike):
         """
         return self.acl(timeout=timeout, tries=tries)
 
+    @rods_type_check
     def acl(self, timeout=None, tries=1) -> List[AC]:
         """Return the item's Access Control List (ACL). Synonym for permissions().
 
@@ -1388,6 +1441,20 @@ class RodsItem(PathLike):
             raise BatonError(f"{Baton.ACCESS} key missing from {item}")
 
         return sorted(item[Baton.ACCESS])
+
+    def __lt__(self, other):
+        if isinstance(self, Collection) and isinstance(other, DataObject):
+            return True
+        if isinstance(self, DataObject) and isinstance(other, Collection):
+            return False
+
+        return self.path < other.path
+
+    @abstractmethod
+    def rods_type(self) -> Optional[Type[RodsItem]]:
+        """Return a Python type representing the kind of iRODS path supplied."""
+
+    pass
 
     @abstractmethod
     def check_rods_type(self, **kwargs):
@@ -1426,8 +1493,8 @@ class DataObject(RodsItem):
         check_type=True,
         pool=default_pool,
     ):
-        """
-        DataObject constructor.
+        """DataObject constructor.
+
         Args:
             remote_path: A remote data object path.
             check_type: Check the remote path type if True, defaults to True.
@@ -1444,9 +1511,8 @@ class DataObject(RodsItem):
         timeout=None,
         tries=1,
         pool=default_pool,
-    ):
-        """
-        Query data object metadata in iRODS.
+    ) -> list[DataObject]:
+        """Query data object metadata in iRODS.
 
         Args:
             *avus: One or more AVUs to query.
@@ -1455,8 +1521,7 @@ class DataObject(RodsItem):
             tries: Number of times to try the operation.
             pool: Client pool to use. If omitted, the default pool is used.
 
-        Returns: List[Union[DataObject, Collection]]
-
+        Returns: A list of data objects with matching metadata.
         """
 
         with client(pool) as c:
@@ -1473,18 +1538,20 @@ class DataObject(RodsItem):
         objs.sort()
         return objs
 
-    def check_rods_type(self, **kwargs):
-        timeout = kwargs.get("timeout", None)
-        tries = kwargs.get("tries", 1)
+    @functools.cached_property
+    def rods_type(self):
+        """Return a Python type representing the kind of iRODS path supplied."""
+        return rods_path_type(PurePath(self.path, self.name))
 
-        if not self._exists(timeout=timeout, tries=tries):
+    def check_rods_type(self, **kwargs):
+        """Raise an error if the path is not a data object in iRODS."""
+        if not self.check_type:
             return
 
-        item = self._list(timeout=timeout, tries=tries).pop()
-        if Baton.OBJ not in item:
+        rt = self.rods_type
+        if rt is not None and rt != DataObject:
             raise BatonError(
-                f"Invalid iRODS path for a data object; the {Baton.OBJ} "
-                f"key is not in {item}, indicating a collection"
+                f"Invalid iRODS path type {rt} for a data object: {self.path}"
             )
 
     @rods_type_check
@@ -1513,16 +1580,16 @@ class DataObject(RodsItem):
         the remote side, return None.
 
         Args:
-            calculate_checksum: Calculate remote checksums for all replicates. If
+            calculate_checksum: Calculate remote checksums for all replicas. If
             checksums exist, this is a no-op.
             recalculate_checksum: Force recalculation of remote checksums for all
-            replicates.
+            replicas.
             verify_checksum: Verify the local checksum against the remote checksum.
             Verification implies checksum calculation.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: str
+        Returns: A checksum
         """
 
         item = self._to_dict()
@@ -1698,7 +1765,7 @@ class DataObject(RodsItem):
         Args:
             local_path: The local path of a file to put into iRODS at the path
             specified by this data object.
-            calculate_checksum: Calculate remote checksums for all replicates. If
+            calculate_checksum: Calculate remote checksums for all replicas. If
             checksums exist, this is a no-op.
             verify_checksum: Verify the local checksum against the remote checksum.
             Verification implies checksum calculation.
@@ -1747,6 +1814,9 @@ class DataObject(RodsItem):
 
         return self.path == other.path and self.name == other.name
 
+    def __hash__(self):
+        return hash(self.path) + hash(self.name)
+
     def __fspath__(self):
         return self.__repr__()
 
@@ -1768,7 +1838,18 @@ class Collection(RodsItem):
         timeout=None,
         tries=1,
         pool=default_pool,
-    ):
+    ) -> list[Collection]:
+        """Query collection metadata in iRODS.
+
+        Args:
+            *avus: AVUs to query.
+            zone: Zone hint for the query. Defaults to None (query the current zone).
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+            pool: Client pool to use. If omitted, the default pool is used.
+
+        Returns: A list of collections with matching metadata.
+        """
         with client(pool) as c:
             items = c.query_metadata(
                 avus,
@@ -1786,8 +1867,8 @@ class Collection(RodsItem):
     def __init__(
         self, remote_path: Union[PurePath, str], check_type=True, pool=default_pool
     ):
-        """
-        Collection constructor.
+        """Collection constructor.
+
         Args:
             remote_path: A remote collection path.
             check_type: Check the remote path type if True, defaults to True.
@@ -1811,18 +1892,20 @@ class Collection(RodsItem):
         with client(self.pool) as c:
             c.create_collection(item, parents=parents, timeout=timeout, tries=tries)
 
-    def check_rods_type(self, **kwargs):
-        timeout = kwargs.get("timeout", None)
-        tries = kwargs.get("tries", 1)
+    @functools.cached_property
+    def rods_type(self):
+        """Return a Python type representing the kind of iRODS path supplied."""
+        return rods_path_type(self.path)
 
-        if not self._exists(timeout=timeout, tries=tries):
+    def check_rods_type(self, **kwargs):
+        """Raise an error if the path is not a collection in iRODS."""
+        if not self.check_type:
             return
 
-        item = self._list(timeout=timeout, tries=tries).pop()
-        if Baton.OBJ in item:
+        rt = self.rods_type
+        if rt is not None and rt != Collection:
             raise BatonError(
-                f"Invalid iRODS path for a collection; the {Baton.OBJ} "
-                f"key present in {item}, indicating a data object"
+                f"Invalid iRODS path type {rt} for a collection: {self.path}"
             )
 
     @rods_type_check
@@ -1838,7 +1921,7 @@ class Collection(RodsItem):
           timeout: Operation timeout in seconds.
           tries: Number of times to try the operation.
 
-        Returns: List[Union[DataObject, Collection]]
+        Returns: A list of collections and data objects directly in the collection.
         """
         items = self._list(
             acl=acl,
@@ -1953,6 +2036,9 @@ class Collection(RodsItem):
 
         return self.path == other.path
 
+    def __hash__(self):
+        return hash(self.path)
+
     def __fspath__(self):
         return self.__repr__()
 
@@ -2023,9 +2109,13 @@ def _make_rods_item(item: Dict, pool: BatonPool) -> Union[DataObject, Collection
 
     Returns: Union[DataObject, Collection]
     """
-    if Baton.COLL not in item:
-        raise BatonError(f"{Baton.COLL} key missing from {item}")
+    match item:
+        case {Baton.COLL: c, Baton.OBJ: o}:
+            log.debug(f"Making a DataObject from {item}")
+            return DataObject(PurePath(c, o), pool=pool)
+        case {Baton.COLL: c}:
+            log.debug(f"Making a Collection from {item}")
 
-    if Baton.OBJ in item:
-        return DataObject(PurePath(item[Baton.COLL], item[Baton.OBJ]), pool=pool)
-    return Collection(PurePath(item[Baton.COLL]), pool=pool)
+            return Collection(PurePath(c), pool=pool)
+        case _:
+            raise BatonError(f"{Baton.COLL} key missing from {item}")
