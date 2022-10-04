@@ -195,8 +195,8 @@ class Baton:
         """Lists i.e. reports on items in iRODS.
 
         Args:
-            item: A dictionary representing the item When serialized as JSON,
-            this must be suitable input for baton-do.
+            item: A dictionary representing the item. When serialized as JSON,
+                this must be suitable input for baton-do.
             acl: Include ACL information in the result.
             avu: Include AVU information in the result.
             contents: Include contents in the result (for a collection item).
@@ -244,11 +244,11 @@ class Baton:
 
         Args:
             item: A dictionary representing the item When serialized as JSON,
-            this must be suitable input for baton-do.
+                this must be suitable input for baton-do.
             calculate_checksum: Ask iRODS to calculate the checksum, if there is no
-            remote checksum currently.
+                remote checksum currently.
             recalculate_checksum: Ask iRODS to calculate the checksum, even if there
-            is a remote checksum currently.
+                is a remote checksum currently.
             verify_checksum: Verify the remote checksum against the data.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
@@ -287,7 +287,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-            this must be suitable input for baton-do.
+                this must be suitable input for baton-do.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
@@ -333,7 +333,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-            this must be suitable input for baton-do.
+                this must be suitable input for baton-do.
             recurse: Recursively set permissions on a collection.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
@@ -355,7 +355,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-            this must be suitable input for baton-do.
+                this must be suitable input for baton-do.
             local_path: A local path to create.
             verify_checksum: Verify the data object's checksum on download.
             force: Overwrite any existing file.
@@ -396,7 +396,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-            this must be suitable input for baton-do.
+                this must be suitable input for baton-do.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
 
@@ -423,7 +423,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-            this must be suitable input for baton-do.
+                this must be suitable input for baton-do.
             local_path: The path of a file to upload.
             calculate_checksum: Calculate a remote checksum.
             verify_checksum: Verify the remote checksum after upload.
@@ -451,7 +451,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-            this must be suitable input for baton-do.
+                this must be suitable input for baton-do.
             parents: Create the collection's parents, if necessary.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
@@ -856,7 +856,7 @@ class AVU(object):
 
         Args:
             avus: AVUs removed, which must share the same attribute
-            and namespace (if any).
+                and namespace (if any).
             history_date: A datetime to be embedded as part of the history
             AVU value.
 
@@ -1256,11 +1256,11 @@ class RodsItem(PathLike):
 
          Args:
              avus: One or more AVUs to add in place of existing AVUs sharing
-             those attributes.
+                 those attributes.
              history: Create history AVUs describing any AVUs removed when
-             superseding. See AVU.history.
+                 superseding. See AVU.history.
              history_date: A datetime to be embedded as part of the history
-             AVU values.
+                 AVU values.
              timeout: Operation timeout in seconds.
              tries: Number of times to try the operation.
 
@@ -1581,9 +1581,9 @@ class DataObject(RodsItem):
 
         Args:
             calculate_checksum: Calculate remote checksums for all replicas. If
-            checksums exist, this is a no-op.
+                checksums exist, this is a no-op.
             recalculate_checksum: Force recalculation of remote checksums for all
-            replicas.
+                replicas.
             verify_checksum: Verify the local checksum against the remote checksum.
             Verification implies checksum calculation.
             timeout: Operation timeout in seconds.
@@ -1764,9 +1764,9 @@ class DataObject(RodsItem):
 
         Args:
             local_path: The local path of a file to put into iRODS at the path
-            specified by this data object.
+                specified by this data object.
             calculate_checksum: Calculate remote checksums for all replicas. If
-            checksums exist, this is a no-op.
+                checksums exist, this is a no-op.
             verify_checksum: Verify the local checksum against the remote checksum.
             Verification implies checksum calculation.
             force: Overwrite any data object already present in iRODS.
@@ -2016,7 +2016,7 @@ class Collection(RodsItem):
 
         Args:
             local_path: The local path of a directory to put into iRODS at the path
-            specified by this collection.
+                specified by this collection.
             recurse: Recurse through subdirectories.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
