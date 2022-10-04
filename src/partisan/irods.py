@@ -1534,9 +1534,9 @@ class DataObject(RodsItem):
                 tries=tries,
             )
 
-        objs = [_make_rods_item(item, pool=pool) for item in items]
-        objs.sort()
-        return objs
+        objects = [_make_rods_item(item, pool=pool) for item in items]
+        objects.sort()
+        return objects
 
     @functools.cached_property
     def rods_type(self):
@@ -1860,9 +1860,9 @@ class Collection(RodsItem):
                 tries=tries,
             )
 
-        colls = [_make_rods_item(item, pool=pool) for item in items]
-        colls.sort()
-        return colls
+        collections = [_make_rods_item(item, pool=pool) for item in items]
+        collections.sort()
+        return collections
 
     def __init__(
         self, remote_path: Union[PurePath, str], check_type=True, pool=default_pool
@@ -1952,17 +1952,19 @@ class Collection(RodsItem):
         else:
             collect = contents
 
-        return sorted(collect)
+        collect.sort()
+        return collect
 
     @rods_type_check
     def iter_contents(
-        self, acl=False, avu=False, timeout=None, tries=1
+        self, acl=False, avu=False, recurse=False, timeout=None, tries=1
     ) -> Iterable[Union[DataObject, Collection]]:
         """Return a generator for the Collection contents.
 
         Args:
           acl: Include ACL information.
           avu: Include AVU (metadata) information.
+          recurse: Recurse into sub-collections.
           timeout: Operation timeout in seconds.
           tries: Number of times to try the operation.
 
@@ -1976,14 +1978,25 @@ class Collection(RodsItem):
         )
 
         contents = [_make_rods_item(item, pool=self.pool) for item in items]
-        for elt in contents:
-            elt.path = self.path / elt.path  # Make an absolute path
-            yield elt
+        contents.sort()
 
-            if isinstance(elt, Collection):
-                yield from elt.iter_contents(
-                    acl=acl, avu=avu, timeout=timeout, tries=tries
-                )
+        if recurse:
+            for elt in contents:
+                elt.path = self.path / elt.path  # Make an absolute path
+                yield elt
+
+                if isinstance(elt, Collection):
+                    yield from elt.iter_contents(
+                        acl=acl,
+                        avu=avu,
+                        recurse=recurse,
+                        timeout=timeout,
+                        tries=tries,
+                    )
+        else:
+            for elt in contents:
+                elt.path = self.path / elt.path
+                yield elt
 
     @rods_type_check
     def list(self, acl=False, avu=False, timeout=None, tries=1) -> Collection:
