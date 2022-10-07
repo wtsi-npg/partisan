@@ -1980,11 +1980,11 @@ class Collection(RodsItem):
         contents = [_make_rods_item(item, pool=self.pool) for item in items]
         contents.sort()
 
-        if recurse:
-            for elt in contents:
-                elt.path = self.path / elt.path  # Make an absolute path
-                yield elt
 
+        for elt in contents:
+            elt.path = self.path / elt.path  # Make an absolute path
+            yield elt
+            if recurse:
                 if isinstance(elt, Collection):
                     yield from elt.iter_contents(
                         acl=acl,
@@ -1993,10 +1993,6 @@ class Collection(RodsItem):
                         timeout=timeout,
                         tries=tries,
                     )
-        else:
-            for elt in contents:
-                elt.path = self.path / elt.path
-                yield elt
 
     @rods_type_check
     def list(self, acl=False, avu=False, timeout=None, tries=1) -> Collection:
