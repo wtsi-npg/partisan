@@ -1980,7 +1980,6 @@ class Collection(RodsItem):
         contents = [_make_rods_item(item, pool=self.pool) for item in items]
         contents.sort()
 
-
         for elt in contents:
             elt.path = self.path / elt.path  # Make an absolute path
             yield elt
