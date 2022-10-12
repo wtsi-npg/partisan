@@ -27,6 +27,7 @@ import pytest
 from pytest import mark as m
 
 import partisan
+from partisan import irods
 from partisan.exception import BatonError, RodsError
 from partisan.irods import (
     AC,
@@ -35,6 +36,7 @@ from partisan.irods import (
     Collection,
     DataObject,
     Permission,
+    format_timestamp,
     make_rods_item,
     query_metadata,
     rods_path_type,
@@ -547,6 +549,38 @@ class TestDataObject(object):
         assert obj.exists()
         assert obj.checksum() == "d8e8fca2dc0f896fd7cb4cb0031ba249"
 
+    @m.it("Can report its metadata")
+    def test_has_meta(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+        avus = [AVU("a", 1), AVU("b", 2), AVU("c", 3)]
+
+        assert not obj.has_metadata(*avus)
+        obj.add_metadata(*avus)
+        assert obj.has_metadata(*avus)
+
+        for avu in avus:
+            assert obj.has_metadata(avu)
+        assert obj.has_metadata(*avus[:2])
+        assert obj.has_metadata(*avus[1:])
+        assert not obj.has_metadata(*avus, AVU("z", 9))
+
+    @m.it("Can report its metadata attributes")
+    def test_has_meta_attrs(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+        avus = [AVU("a", 1), AVU("a", 2), AVU("b", 2), AVU("b", 3), AVU("c", 3)]
+
+        assert not obj.has_metadata_attrs("a", "b", "c")
+        obj.add_metadata(*avus)
+        assert obj.has_metadata_attrs("a", "b", "c")
+
+        attrs = ["a", "b", "c"]
+        for attr in attrs:
+            assert obj.has_metadata_attrs(attr)
+        assert obj.has_metadata_attrs(*attrs)
+        assert obj.has_metadata_attrs(*attrs[:2])
+        assert obj.has_metadata_attrs(*attrs[1:])
+        assert not obj.has_metadata_attrs(*attrs, "z")
+
     @m.it("Can add have metadata added")
     def test_add_meta_data_object(self, simple_data_object):
         obj = DataObject(simple_data_object)
@@ -612,7 +646,7 @@ class TestDataObject(object):
             3,
         ), "AVUs sharing an attribute with a new AVU are replaced"
 
-        date = date.isoformat(timespec="seconds")
+        date = irods.format_timestamp(date)
         history = AVU("abcde_history", f"[{date}] {avu1.value},{avu3.value}")
         expected = [avu2, avu4, avu5, history]
         expected.sort()

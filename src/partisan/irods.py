@@ -813,7 +813,7 @@ class AVU(object):
     HISTORY_SUFFIX = "_history"
     """The attribute history suffix"""
 
-    def __init__(self, attribute: str, value: Any, units=None, namespace=None):
+    def __init__(self, attribute: Any, value: Any, units=None, namespace=None):
         if namespace:
             if namespace.find(AVU.SEPARATOR) >= 0:
                 raise ValueError(
@@ -864,7 +864,7 @@ class AVU(object):
         """
         if history_date is None:
             history_date = datetime.utcnow()
-        date = history_date.isoformat(timespec="seconds")
+        date = format_timestamp(history_date)
 
         # Check that the AVUs have the same namespace and attribute and that
         # none are history attributes (we don't do meta-history!)
@@ -1142,6 +1142,16 @@ def rods_path_type(
         raise re
 
 
+def format_timestamp(ts: datetime) -> str:
+    """Return a formatted representation of a timestamp, suitable for use in iRODS
+    metadata.
+
+    Args:
+        ts: The timestamp to format
+    """
+    return ts.isoformat(timespec="seconds")
+
+
 def make_rods_item(
     path: Union[PurePath, str], pool=default_pool
 ) -> Union[Collection, DataObject]:
@@ -1184,13 +1194,38 @@ class RodsItem(PathLike):
 
     @rods_type_check
     def exists(self, timeout=None, tries=1) -> bool:
-        """Return true if the item exists in iRODS.
+        """Return True if the item exists in iRODS.
 
         Args:
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
         """
         return self._exists(timeout=timeout, tries=tries)
+
+    def has_metadata(self, *avus: AVU, timeout=None, tries=1) -> bool:
+        """Return True if all the argument AVUs are in the item's metadata.
+
+        Args:
+            *avus: One or more AVUs to test.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: True if every AVU (i.e. key, value and optionally, unit) is present.
+        """
+        return set(avus).issubset(self.metadata(timeout=timeout, tries=tries))
+
+    def has_metadata_attrs(self, *attrs: str, timeout=None, tries=1) -> bool:
+        """Return True if all the argument attributes are in the item's metadata.
+
+        Args:
+            *attrs: One or more attributes to test.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: True if every attribute is present in at least one AVU.
+        """
+        collated = self.collated_metadata(timeout=timeout, tries=tries)
+        return set(attrs).issubset(collated.keys())
 
     @rods_type_check
     def add_metadata(self, *avus: AVU, timeout=None, tries=1) -> int:
@@ -1414,6 +1449,13 @@ class RodsItem(PathLike):
             raise BatonError(f"{Baton.AVUS} key missing from {item}")
 
         return sorted(item[Baton.AVUS])
+
+    def collated_metadata(self, timeout=None, tries=1) -> dict[str:list]:
+        collated = defaultdict(list)
+        for avu in self.metadata(timeout=timeout, tries=tries):
+            collated[avu.attribute].append(avu.value)
+
+        return collated
 
     def permissions(self, timeout=None, tries=1) -> List[AC]:
         """Return the item's Access Control List (ACL). Synonym for acl().
