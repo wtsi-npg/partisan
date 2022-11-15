@@ -26,6 +26,8 @@ from unittest.mock import patch
 import pytest
 from pytest import mark as m
 
+import partisan
+from partisan import irods
 from partisan.exception import BatonError, RodsError
 from partisan.irods import (
     AC,
@@ -34,7 +36,10 @@ from partisan.irods import (
     Collection,
     DataObject,
     Permission,
+    format_timestamp,
+    make_rods_item,
     query_metadata,
+    rods_path_type,
 )
 
 
@@ -135,6 +140,24 @@ class TestAVU(object):
         x.sort()
 
         assert x == [AVU("x", 1, "cm"), AVU("x", 1, "km"), AVU("x", 1, "mm")]
+
+
+@m.describe("RodsPath")
+class TestRodsPath(object):
+    @m.describe("Support for iRODS path inspection")
+    @m.context("When a collection path exists")
+    @m.it("Is identified as a collection")
+    def test_collection_path_type(self, simple_collection):
+        assert rods_path_type(simple_collection) == partisan.irods.Collection
+        assert make_rods_item(simple_collection) == Collection(simple_collection)
+        assert Collection(simple_collection).rods_type == partisan.irods.Collection
+
+    @m.context("When a data object path exists")
+    @m.it("Is identified as a data object")
+    def test_data_object_path_type(self, simple_data_object):
+        assert rods_path_type(simple_data_object) == partisan.irods.DataObject
+        assert make_rods_item(simple_data_object) == DataObject(simple_data_object)
+        assert DataObject(simple_data_object).rods_type == partisan.irods.DataObject
 
 
 @m.describe("Collection")
@@ -279,6 +302,10 @@ class TestCollection(object):
         iter_contents = Collection(p).iter_contents()
 
         expected_list = [
+            "fast5_fail",
+            "fast5_pass",
+            "fastq_fail",
+            "fastq_pass",
             "GXB02004_20190904_151413_FAL01979_gridion_sequencing_run_DN585561I_A1_sequencing_summary.txt",
             "duty_time.csv",
             "final_report.txt.gz",
@@ -286,18 +313,14 @@ class TestCollection(object):
             "report.md",
             "report.pdf",
             "throughput.csv",
-            "fast5_fail",
             "fast5_fail/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_1.fast5",
             "fast5_fail/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_2.fast5",
-            "fast5_pass",
             "fast5_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_0.fast5",
             "fast5_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_1.fast5",
             "fast5_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_2.fast5",
             "fast5_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_3.fast5",
-            "fastq_fail",
             "fastq_fail/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_1.fastq",
             "fastq_fail/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_2.fastq",
-            "fastq_pass",
             "fastq_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_1.fastq",
             "fastq_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_2.fastq",
             "fastq_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_3.fastq",
@@ -526,6 +549,38 @@ class TestDataObject(object):
         assert obj.exists()
         assert obj.checksum() == "d8e8fca2dc0f896fd7cb4cb0031ba249"
 
+    @m.it("Can report its metadata")
+    def test_has_meta(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+        avus = [AVU("a", 1), AVU("b", 2), AVU("c", 3)]
+
+        assert not obj.has_metadata(*avus)
+        obj.add_metadata(*avus)
+        assert obj.has_metadata(*avus)
+
+        for avu in avus:
+            assert obj.has_metadata(avu)
+        assert obj.has_metadata(*avus[:2])
+        assert obj.has_metadata(*avus[1:])
+        assert not obj.has_metadata(*avus, AVU("z", 9))
+
+    @m.it("Can report its metadata attributes")
+    def test_has_meta_attrs(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+        avus = [AVU("a", 1), AVU("a", 2), AVU("b", 2), AVU("b", 3), AVU("c", 3)]
+
+        assert not obj.has_metadata_attrs("a", "b", "c")
+        obj.add_metadata(*avus)
+        assert obj.has_metadata_attrs("a", "b", "c")
+
+        attrs = ["a", "b", "c"]
+        for attr in attrs:
+            assert obj.has_metadata_attrs(attr)
+        assert obj.has_metadata_attrs(*attrs)
+        assert obj.has_metadata_attrs(*attrs[:2])
+        assert obj.has_metadata_attrs(*attrs[1:])
+        assert not obj.has_metadata_attrs(*attrs, "z")
+
     @m.it("Can add have metadata added")
     def test_add_meta_data_object(self, simple_data_object):
         obj = DataObject(simple_data_object)
@@ -591,7 +646,7 @@ class TestDataObject(object):
             3,
         ), "AVUs sharing an attribute with a new AVU are replaced"
 
-        date = date.isoformat(timespec="seconds")
+        date = irods.format_timestamp(date)
         history = AVU("abcde_history", f"[{date}] {avu1.value},{avu3.value}")
         expected = [avu2, avu4, avu5, history]
         expected.sort()

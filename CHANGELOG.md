@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [2.0.0]
+
+### Added
+ - Metadata utility methods
+ - pls command line client with bash completion
+ - Cached rods_type attribute to iRODS objects
+ - rods_path_type and rods_path_exists support functions
+
+### Changed
+ - Recurse keyword added to Collection.iter_contents
+ - Sort the result of Collection.iter_contents
+ - Bump black from 22.8.0 to 22.10.0
+ - Bump pytest from 7.1.3 to 7.2.0
+
+### Fixed
+ - Missing __hash__ implementation on iRODS objects
+
 ## [1.2.0]
 
 ### Added

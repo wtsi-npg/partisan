@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2021 Genome Research Ltd. All rights reserved.
+# Copyright © 2021, 2022 Genome Research Ltd. All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,10 +19,7 @@
 
 import importlib.metadata
 
-try:
-    __version__ = importlib.metadata.version("partisan")
-except importlib.metadata.PackageNotFoundError:
-    pass
+__version__ = importlib.metadata.version("partisan")
 
 
 def version() -> str:

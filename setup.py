@@ -38,7 +38,12 @@ setup(
     packages=find_packages("src"),
     package_dir={"": "src"},
     setup_requires=["setuptools_scm"],
-    install_requires=["python-dateutil", "structlog"],
+    install_requires=["click", "python-dateutil", "structlog"],
     tests_require=["black", "pytest", "pytest-it"],
     scripts=[],
+    entry_points={
+        "console_scripts": [
+            "pls = partisan.cli:pls",
+        ],
+    },
 )
