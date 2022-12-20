@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools", "setuptools_scm[toml]==7.0.5"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "partisan"
+description = "A Python API for iRODS using the baton.py iRODS client"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+authors = [ {name = "Keith James", email = "kdj@sanger.ac.uk"} ]
+maintainers = [ {name = "Michael Kubiak", email = "mk35@sanger.ac.uk"} ]
+dependencies = [
+    "click==8.1.3",
+    "python-dateutil==2.8.2",
+    "structlog==22.3.0"
+]
+dynamic = ["version"]
+
+[tool.setuptools_scm]
+
+[project.urls]
+github = "https://github.com/wtsi-npg/partisan"
+
+[project.optional-dependencies]
+test = [
+    "black==22.10.0",
+    "pytest==7.2.0",
+    "pytest-it==0.1.4"
+]
+
+[project.scripts]
+pls = "partisan.cli:pls"
