@@ -98,6 +98,26 @@ def irm(remote_path: Union[PurePath, str], force=False, recurse=False):
     _run(cmd)
 
 
+def icp(
+    from_path: Union[PurePath, str],
+    to_path: Union[PurePath, str],
+    force=False,
+    verify_checksum=True,
+    recurse=False,
+):
+    cmd = ["icp"]
+    if force:
+        cmd.append("-f")
+    if verify_checksum:
+        cmd.append("-K")
+    if recurse:
+        cmd.append("-r")
+
+    cmd.append(from_path)
+    cmd.append(to_path)
+    _run(cmd)
+
+
 def have_admin() -> bool:
     """Returns true if the current user has iRODS admin capability."""
     cmd = ["iadmin", "lu"]
