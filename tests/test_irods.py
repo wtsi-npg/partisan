@@ -754,3 +754,53 @@ class TestQueryMetadata(object):
         ] == query_metadata(
             AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
         )
+
+
+class TestSpecialPath(object):
+    def test_collection_space(self, special_paths):
+        p = PurePath(special_paths, "a a")
+        coll = Collection(p)
+        assert coll.exists()
+        assert coll.path == p
+        assert coll.path.name == "a a"
+
+    def test_collection_quote(self, special_paths):
+        p = PurePath(special_paths, 'b"b')
+        coll = Collection(p)
+        assert coll.exists()
+        assert coll.path == p
+        assert coll.path.name == 'b"b'
+
+    def test_data_object_space(self, special_paths):
+        p = PurePath(special_paths, "y y.txt")
+        obj = DataObject(p)
+        assert obj.exists()
+        assert obj.name == "y y.txt"
+
+    def test_data_object_quote(self, special_paths):
+        p = PurePath(special_paths, 'z".txt')
+        obj = DataObject(p)
+        assert obj.exists()
+        assert obj.name == 'z".txt'
+
+    def test_collection_contents(self, special_paths):
+        expected = [
+            PurePath(special_paths, p).as_posix()
+            for p in [
+                "a a",
+                'b"b',
+                "x.txt",
+                "y y.txt",
+                'z".txt',
+                "a a/x.txt",
+                "a a/y y.txt",
+                'a a/z".txt',
+                'b"b/x.txt',
+                'b"b/y y.txt',
+                'b"b/z".txt',
+            ]
+        ]
+
+        coll = Collection(special_paths)
+        observed = [str(x) for x in coll.contents(recurse=True)]
+        assert observed == expected

@@ -118,6 +118,22 @@ def annotated_data_object(simple_data_object):
 
 
 @pytest.fixture(scope="function")
+def special_paths(tmp_path):
+    """A fixture providing a collection of challengingly named paths which contain spaces
+    and/or quotes."""
+    root_path = PurePath("/testZone/home/irods/test")
+    rods_path = add_rods_path(root_path, tmp_path)
+
+    iput("./tests/data/special", rods_path, recurse=True)
+    expt_root = rods_path / "special"
+
+    try:
+        yield expt_root
+    finally:
+        irm(root_path, force=True, recurse=True)
+
+
+@pytest.fixture(scope="function")
 def ont_gridion(tmp_path):
     """A fixture providing a set of files based on output from an ONT GridION
     instrument. This dataset provides an example of file and directory naming
