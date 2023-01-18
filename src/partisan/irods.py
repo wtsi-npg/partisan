@@ -489,7 +489,7 @@ class Baton:
             t.join(timeout=timeout)
             if not t.is_alive():
                 break
-            log.warning(f"Timed out sending", client=self, tryno=i, doc=wrapped)
+            log.warning("Timed out sending", client=self, tryno=i, doc=wrapped)
 
             # Still alive after all the tries?
         if t.is_alive():
@@ -1184,6 +1184,8 @@ class RodsItem(PathLike):
         self.check_type = check_type
         self.pool = pool
 
+        self._rods_type = None
+
     def _exists(self, timeout=None, tries=1) -> bool:
         try:
             self._list(timeout=timeout, tries=tries)
@@ -1580,10 +1582,12 @@ class DataObject(RodsItem):
         objects.sort()
         return objects
 
-    @functools.cached_property
+    @property
     def rods_type(self):
         """Return a Python type representing the kind of iRODS path supplied."""
-        return rods_path_type(PurePath(self.path, self.name))
+        if self._rods_type is None:
+            self._rods_type = rods_path_type(PurePath(self.path, self.name))
+        return self._rods_type
 
     def check_rods_type(self, **kwargs):
         """Raise an error if the path is not a data object in iRODS."""
@@ -1934,10 +1938,12 @@ class Collection(RodsItem):
         with client(self.pool) as c:
             c.create_collection(item, parents=parents, timeout=timeout, tries=tries)
 
-    @functools.cached_property
+    @property
     def rods_type(self):
         """Return a Python type representing the kind of iRODS path supplied."""
-        return rods_path_type(self.path)
+        if self._rods_type is None:
+            self._rods_type = rods_path_type(self.path)
+        return self._rods_type
 
     def check_rods_type(self, **kwargs):
         """Raise an error if the path is not a collection in iRODS."""
@@ -2006,7 +2012,7 @@ class Collection(RodsItem):
         Args:
           acl: Include ACL information.
           avu: Include AVU (metadata) information.
-          recurse: Recurse into sub-collections.
+          recurse: Recurse into sub-collections in depth-first order.
           timeout: Operation timeout in seconds.
           tries: Number of times to try the operation.
 
