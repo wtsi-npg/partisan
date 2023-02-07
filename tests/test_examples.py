@@ -48,7 +48,6 @@ class TestExamples(object):
     """
 
     def test_collection_examples(self, ont_gridion):
-
         # Given some collections and data objects already in iRODS ...
 
         # To make an object representing a collection, pass a string or os.PathLike
@@ -167,7 +166,6 @@ class TestExamples(object):
         assert irods.query_metadata(AVU("experiment_id", "experiment_1")) == [obj]
 
     def test_pool_examples(self, ont_gridion):
-
         # partisan uses a small pool (the default is 4) of BatonClient instances to
         # serve requests. This pool is created automatically and is passed to the
         # constructors of Collections and DataObjects by default. If you would like an
@@ -186,7 +184,6 @@ class TestExamples(object):
             coll = Collection(ont_gridion, pool=pool)
 
     def test_timeout_examples(self, ont_gridion):
-
         # In its API methods that communicate with the iRODS server, partisan
         # provides the two keyword arguments `timeout` and `tries` to control the
         # timeout for the operation (in seconds) and how many attempts should be made
