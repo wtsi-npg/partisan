@@ -326,7 +326,7 @@ class TestCollection(object):
             "fastq_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_3.fastq",
             "fastq_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_4.fastq",
         ]
-        for (actual, expected) in zip(iter_contents, expected_list):
+        for actual, expected in zip(iter_contents, expected_list):
             assert str(actual).endswith(expected)
 
     @m.it("Can have metadata added")

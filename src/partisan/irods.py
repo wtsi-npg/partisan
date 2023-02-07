@@ -1009,7 +1009,6 @@ class Replica(object):
         checksum=None,
         valid=True,
     ):
-
         if resource is None:
             raise ValueError("Replica resource may not be None")
         if location is None:
