@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021, 2022 Genome Research Ltd. All rights reserved.
+# Copyright © 2020, 2021, 2022, 2023 Genome Research Ltd. All rights
+# reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +21,6 @@
 from __future__ import annotations  # Will not be needed in Python 3.10
 
 import atexit
-import functools
 import json
 import subprocess
 import threading
@@ -46,6 +46,7 @@ from partisan.exception import (
     InvalidJSONError,
     RodsError,
 )
+from partisan.icommands import itrim
 
 log = get_logger(__name__)
 
@@ -1452,6 +1453,19 @@ class RodsItem(PathLike):
         return sorted(item[Baton.AVUS])
 
     def collated_metadata(self, timeout=None, tries=1) -> dict[str:list]:
+        """Return a dictionary mapping AVU attributes to lists of corresponding AVU
+        values.
+
+        This method collates AVU values under their shared key. E.g. if an item had the
+        AVUs AVU("Key1", "Value1") and AVU("Key1", "Value2"), the collated dictionary
+        would be {"Key1": ["Value1", "Value2"]}.
+
+        Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: Dict[str:List]
+        """
         collated = defaultdict(list)
         for avu in self.metadata(timeout=timeout, tries=tries):
             collated[avu.attribute].append(avu.value)
@@ -1844,6 +1858,43 @@ class DataObject(RodsItem):
         item = self._to_dict()
         with client(self.pool) as c:
             return c.read(item, timeout=timeout, tries=tries)
+
+    def trim_replicas(self, min_replicas=2, valid=False, invalid=True) -> (int, int):
+        """Trim excess and invalid replicas of the data object.
+
+        Args:
+            min_replicas: The minimum number of valid replicas after the operation.
+            valid: Trim valid replicas. Optional, defaults to False.
+            invalid: Trim invalid replicas. Optional, defaults to True.
+
+        Returns: The number of valid replicas trimmed and the number of invalid
+            replicas trimmed.
+        """
+        vr = [r for r in self.replicas() if r.valid]
+        ir = [r for r in self.replicas() if not r.valid]
+
+        valid_trimmed = 0
+        invalid_trimmed = 0
+        path = str(self)
+
+        if valid:
+            trimmable = vr[min_replicas:]
+            if not trimmable:
+                log.warn(
+                    "Not trimming valid replicas below minimum count",
+                    path=path,
+                    num_replicas=min_replicas,
+                )
+            for r in trimmable:
+                valid_trimmed += 1
+                itrim(path, r.number, min_replicas)
+
+        if invalid:
+            for r in ir:
+                invalid_trimmed += 1
+                itrim(path, r.number, min_replicas)
+
+        return valid_trimmed, invalid_trimmed
 
     def _list(self, **kwargs) -> List[dict]:
         item = self._to_dict()

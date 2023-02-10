@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021, 2022 Genome Research Ltd. All rights reserved.
+# Copyright © 2020, 2021, 2022, 2023 Genome Research Ltd. All rights
+# reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,6 +19,7 @@
 # @author Keith James <kdj@sanger.ac.uk>
 
 import subprocess
+from io import StringIO
 from pathlib import PurePath
 from typing import List, Union
 
@@ -95,6 +97,18 @@ def irm(remote_path: Union[PurePath, str], force=False, recurse=False):
         cmd.append("-r")
 
     cmd.append(remote_path)
+
+    # Workround for iRODS 4.2.7 which insists on raising errors with when the target is
+    # absent, even when -f is used. This should be silent for a missing target.
+    try:
+        _run(cmd)
+    except RodsError:
+        if not force:
+            raise
+
+
+def itrim(remote_path: Union[PurePath, str], replica_num: int, min_replicas=2):
+    cmd = ["itrim", "-n", f"{replica_num}", "-N", f"{min_replicas}", remote_path]
     _run(cmd)
 
 
@@ -118,14 +132,52 @@ def icp(
     _run(cmd)
 
 
+def iquest(*args) -> str:
+    """Run a non-paged iquest command with the specified arguments and return the
+    result as a string."""
+    cmd = ["iquest", "--no-page", *args]
+    log.debug("Running command", cmd=cmd)
+
+    completed = subprocess.run(cmd, capture_output=True)
+    if completed.returncode == 0:
+        return completed.stdout.decode("utf-8").strip()
+
+    raise RodsError(completed.stderr.decode("utf-8").strip())
+
+
+def has_specific_sql(alias) -> bool:
+    """Return True if iRODS has a specific query installed under the alias."""
+    existing = iquest("--sql", "ls")
+    with StringIO(existing) as reader:
+        for line in reader:
+            line = line.strip()
+            if line == alias:
+                return True
+    return False
+
+
 def have_admin() -> bool:
-    """Returns true if the current user has iRODS admin capability."""
+    """Return true if the current user has iRODS admin capability."""
     cmd = ["iadmin", "lu"]
     try:
         _run(cmd)
         return True
     except RodsError:
         return False
+
+
+def add_specific_sql(alias, sql):
+    """Add a specific query under the alias, if the alias is not already used."""
+    if not has_specific_sql(alias):
+        cmd = ["iadmin", "asq", sql, alias]
+        _run(cmd)
+
+
+def remove_specific_sql(alias):
+    """Remove any specific query under the alias, if present."""
+    if has_specific_sql(alias):
+        cmd = ["iadmin", "rsq", alias]
+        _run(cmd)
 
 
 def _run(cmd: List[str]):
@@ -135,4 +187,4 @@ def _run(cmd: List[str]):
     if completed.returncode == 0:
         return
 
-    raise RodsError(completed.stderr.decode("utf-8").strip(), 0)
+    raise RodsError(completed.stderr.decode("utf-8").strip())
