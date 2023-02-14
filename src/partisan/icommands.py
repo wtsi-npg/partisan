@@ -102,8 +102,10 @@ def irm(remote_path: Union[PurePath, str], force=False, recurse=False):
     # absent, even when -f is used. This should be silent for a missing target.
     try:
         _run(cmd)
-    except RodsError:
-        if not force:
+    except RodsError as re:
+        if force:
+            log.error(re.message, code=re.code)
+        else:
             raise
 
 
@@ -148,12 +150,9 @@ def iquest(*args) -> str:
 def has_specific_sql(alias) -> bool:
     """Return True if iRODS has a specific query installed under the alias."""
     existing = iquest("--sql", "ls")
+
     with StringIO(existing) as reader:
-        for line in reader:
-            line = line.strip()
-            if line == alias:
-                return True
-    return False
+        return any(line.strip() == alias for line in reader)
 
 
 def have_admin() -> bool:
