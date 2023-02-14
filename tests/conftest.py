@@ -23,7 +23,7 @@
 # directory. Fixtures defined in a conftest.py can be used by any test in that
 # package without needing to import them (pytest will automatically discover
 # them)."
-import os
+
 from pathlib import PurePath
 
 import pytest
@@ -70,16 +70,16 @@ def add_sql_test_utilities():
             "UPDATE r_data_main dm SET DATA_IS_DIRTY = 0 FROM r_coll_main cm "
             "WHERE dm.coll_id = cm.coll_id "
             "AND cm.COLL_NAME = ? "
-            "AND dm.DATA_NAME= ? "
-            "AND dm.DATA_REPL_NUM= ?",
+            "AND dm.DATA_NAME = ? "
+            "AND dm.DATA_REPL_NUM = ?",
         )
         add_specific_sql(
             TEST_SQL_INVALID_CHECKSUM,
             "UPDATE r_data_main dm SET DATA_CHECKSUM = 0 FROM r_coll_main cm "
             "WHERE dm.coll_id = cm.coll_id "
             "AND cm.COLL_NAME = ? "
-            "AND dm.DATA_NAME= ? "
-            "AND dm.DATA_REPL_NUM= ?",
+            "AND dm.DATA_NAME = ? "
+            "AND dm.DATA_REPL_NUM = ?",
         )
 
 
