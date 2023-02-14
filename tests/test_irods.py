@@ -25,8 +25,6 @@ from pathlib import PurePath
 import pytest
 from pytest import mark as m
 
-import partisan
-
 from partisan import irods
 from partisan.exception import BatonError, RodsError
 from partisan.irods import (
@@ -152,16 +150,16 @@ class TestRodsPath(object):
     @m.context("When a collection path exists")
     @m.it("Is identified as a collection")
     def test_collection_path_type(self, simple_collection):
-        assert rods_path_type(simple_collection) == partisan.irods.Collection
+        assert rods_path_type(simple_collection) == Collection
         assert make_rods_item(simple_collection) == Collection(simple_collection)
-        assert Collection(simple_collection).rods_type == partisan.irods.Collection
+        assert Collection(simple_collection).rods_type == Collection
 
     @m.context("When a data object path exists")
     @m.it("Is identified as a data object")
     def test_data_object_path_type(self, simple_data_object):
-        assert rods_path_type(simple_data_object) == partisan.irods.DataObject
+        assert rods_path_type(simple_data_object) == DataObject
         assert make_rods_item(simple_data_object) == DataObject(simple_data_object)
-        assert DataObject(simple_data_object).rods_type == partisan.irods.DataObject
+        assert DataObject(simple_data_object).rods_type == DataObject
 
 
 @m.describe("Collection")
