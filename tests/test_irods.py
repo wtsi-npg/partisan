@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021 Genome Research Ltd. All rights reserved.
+# Copyright © 2020, 2021, 2023 Genome Research Ltd. All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,26 +21,28 @@ import hashlib
 import os.path
 from datetime import datetime
 from pathlib import PurePath
-from unittest.mock import patch
 
 import pytest
 from pytest import mark as m
 
-import partisan
 from partisan import irods
 from partisan.exception import BatonError, RodsError
 from partisan.irods import (
     AC,
     AVU,
-    Baton,
     Collection,
     DataObject,
     Permission,
-    format_timestamp,
     make_rods_item,
     query_metadata,
     rods_path_type,
 )
+
+
+def irods_version():
+    version = os.environ.get("IRODS_VERSION", "4.2.7")
+    [major, minor, patch] = [int(elt) for elt in version.split(".")]
+    return major, minor, patch
 
 
 @m.describe("AC")
@@ -148,16 +150,16 @@ class TestRodsPath(object):
     @m.context("When a collection path exists")
     @m.it("Is identified as a collection")
     def test_collection_path_type(self, simple_collection):
-        assert rods_path_type(simple_collection) == partisan.irods.Collection
+        assert rods_path_type(simple_collection) == Collection
         assert make_rods_item(simple_collection) == Collection(simple_collection)
-        assert Collection(simple_collection).rods_type == partisan.irods.Collection
+        assert Collection(simple_collection).rods_type == Collection
 
     @m.context("When a data object path exists")
     @m.it("Is identified as a data object")
     def test_data_object_path_type(self, simple_data_object):
-        assert rods_path_type(simple_data_object) == partisan.irods.DataObject
+        assert rods_path_type(simple_data_object) == DataObject
         assert make_rods_item(simple_data_object) == DataObject(simple_data_object)
-        assert DataObject(simple_data_object).rods_type == partisan.irods.DataObject
+        assert DataObject(simple_data_object).rods_type == DataObject
 
 
 @m.describe("Collection")
@@ -326,7 +328,7 @@ class TestCollection(object):
             "fastq_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_3.fastq",
             "fastq_pass/FAL01979_9cd2a77baacfe99d6b16f3dad2c36ecf5a6283c3_4.fastq",
         ]
-        for (actual, expected) in zip(iter_contents, expected_list):
+        for actual, expected in zip(iter_contents, expected_list):
             assert str(actual).endswith(expected)
 
     @m.it("Can have metadata added")
@@ -487,26 +489,15 @@ class TestDataObject(object):
         assert obj.checksum(verify_checksum=True)
 
     @m.it("Can have its checksum verified as bad")
-    def test_verify_checksum_bad(self, simple_data_object):
-        obj = DataObject(simple_data_object)
+    @pytest.mark.skipif(
+        irods_version() <= (4, 2, 10), reason="requires iRODS server >4.2.10"
+    )
+    def test_verify_checksum_bad(self, invalid_checksum_data_object):
+        obj = DataObject(invalid_checksum_data_object)
 
-        # We are patching json.loads object hook for decoding baton.py JSON
-        decoded = {
-            Baton.OP: Baton.CHECKSUM,
-            Baton.ARGS: {"verify": True},
-            Baton.TARGET: {
-                Baton.COLL: simple_data_object.parent,
-                Baton.OBJ: simple_data_object.name,
-            },
-            Baton.RESULT: {Baton.SINGLE: None},
-            Baton.ERR: {Baton.MSG: "Checksum validation failed", Baton.CODE: -999},
-        }
-
-        with patch("partisan.irods.as_baton") as json_mock:
-            json_mock.return_value = decoded
-            with pytest.raises(RodsError) as info:
-                obj.checksum(verify_checksum=True)
-                assert info.value.code == decoded[Baton.ERR][Baton.CODE]
+        with pytest.raises(RodsError, match="checksum") as e:
+            obj.checksum(verify_checksum=True)
+        assert e.value.code == -407000  # CHECK_VERIFICATION_RESULTS
 
     @m.it("Has replicas")
     def test_replicas(self, simple_data_object):
@@ -516,6 +507,13 @@ class TestDataObject(object):
         for r in obj.replicas():
             assert r.checksum == "39a4aa291ca849d601e4e5b8ed627a04"
             assert r.valid
+
+    @m.it("Can have its invalid replicas detected")
+    def test_invalid_replica(self, invalid_replica_data_object):
+        obj = DataObject(invalid_replica_data_object)
+        (r0, r1) = obj.replicas()
+        assert r0.valid
+        assert not r1.valid
 
     @m.it("Has a creation timestamp equal to the earliest replica creation time")
     def test_creation_timestamp(self, simple_data_object):
@@ -703,6 +701,75 @@ class TestDataObject(object):
         assert obj.acl() == [AC(user, Permission.OWN, zone=zone)]
 
 
+@m.describe("Replica management")
+class TestReplicaManagement(object):
+    @m.describe("Data objects with valid replicas")
+    @m.context("When trimming would not violate the minimum replica count")
+    @m.it("Trims valid replicas")
+    def test_trim_valid_replica(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+        assert len(obj.replicas()) == 2
+
+        nv, ni = obj.trim_replicas(min_replicas=1, valid=False, invalid=False)  # noop
+        assert nv == ni == 0
+        assert len(obj.replicas()) == 2
+
+        nv, ni = obj.trim_replicas(min_replicas=1, valid=True, invalid=False)
+        assert nv == 1
+        assert ni == 0
+        assert len(obj.replicas()) == 1
+
+    @m.context("When trimming would violate the minimum replica count")
+    @m.it("Does not trim valid replicas")
+    def test_trim_valid_replica_min(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+        assert len(obj.replicas()) == 2
+
+        nv, ni = obj.trim_replicas(min_replicas=2, valid=True, invalid=False)
+        assert nv == ni == 0
+        assert len(obj.replicas()) == 2
+
+    @m.context("When there are no invalid replicas")
+    @m.it("Trims no valid replicas")
+    def test_trim_valid_replica_none(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+        assert len(obj.replicas()) == 2
+
+        nv, ni = obj.trim_replicas(min_replicas=2, valid=False, invalid=True)
+        assert nv == ni == 0
+        assert len(obj.replicas()) == 2
+
+        nv, ni = obj.trim_replicas(min_replicas=1, valid=False, invalid=True)
+        assert len(obj.replicas()) == 2
+        assert nv == ni == 0
+
+    @m.context("When trimming would remove all replicas")
+    @m.it("Raises an error")
+    def test_trim_valid_replica_zero(self, simple_data_object, sql_test_utilities):
+        obj = DataObject(simple_data_object)
+        assert len(obj.replicas()) == 2
+
+        with pytest.raises(RodsError, match="trim error"):
+            obj.trim_replicas(min_replicas=0, valid=True, invalid=False)
+
+    @m.describe("Data objects with invalid replicas")
+    @m.context("When trimming would violate the minimum replica count")
+    @m.it("Still trims invalid replicas")
+    def test_trim_invalid_replica(
+        self, invalid_replica_data_object, sql_test_utilities
+    ):
+        obj = DataObject(invalid_replica_data_object)
+        assert len(obj.replicas()) == 2
+
+        nv, ni = obj.trim_replicas(min_replicas=2, valid=False, invalid=True)
+        # I'd prefer not, but this is iRODS' behaviour. This test is just to emphasise
+        # this and detect if iRODS changes.
+        assert nv == 0
+        assert ni == 1
+        assert len(obj.replicas()) == 1
+        assert obj.replicas()[0].number == 0  # The fixture has replica 1 as invalid
+
+
 @m.describe("Query Metadata")
 class TestQueryMetadata(object):
     @m.describe("Query Collection namespace")
@@ -754,3 +821,65 @@ class TestQueryMetadata(object):
         ] == query_metadata(
             AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
         )
+
+
+@m.describe("Test special paths (quotes, spaces)")
+class TestSpecialPath(object):
+    @m.describe("iRODS paths")
+    @m.context("When a Collection has spaces in its path")
+    @m.it("Behaves normally")
+    def test_collection_space(self, special_paths):
+        p = PurePath(special_paths, "a a")
+        coll = Collection(p)
+        assert coll.exists()
+        assert coll.path == p
+        assert coll.path.name == "a a"
+
+    @m.context("When a Collection has quotes in its path")
+    @m.it("Behaves normally")
+    def test_collection_quote(self, special_paths):
+        p = PurePath(special_paths, 'b"b')
+        coll = Collection(p)
+        assert coll.exists()
+        assert coll.path == p
+        assert coll.path.name == 'b"b'
+
+    @m.context("When a DataObject has spaces in its path")
+    @m.it("Behaves normally")
+    def test_data_object_space(self, special_paths):
+        p = PurePath(special_paths, "y y.txt")
+        obj = DataObject(p)
+        assert obj.exists()
+        assert obj.name == "y y.txt"
+
+    @m.context("When a DataObject has quotes in its path")
+    @m.it("Behaves normally")
+    def test_data_object_quote(self, special_paths):
+        p = PurePath(special_paths, 'z".txt')
+        obj = DataObject(p)
+        assert obj.exists()
+        assert obj.name == 'z".txt'
+
+    @m.context("When a Collection has quotes and spaced in the paths of its contents")
+    @m.it("Behaves normally")
+    def test_collection_contents(self, special_paths):
+        expected = [
+            PurePath(special_paths, p).as_posix()
+            for p in [
+                "a a",
+                'b"b',
+                "x.txt",
+                "y y.txt",
+                'z".txt',
+                "a a/x.txt",
+                "a a/y y.txt",
+                'a a/z".txt',
+                'b"b/x.txt',
+                'b"b/y y.txt',
+                'b"b/z".txt',
+            ]
+        ]
+
+        coll = Collection(special_paths)
+        observed = [str(x) for x in coll.contents(recurse=True)]
+        assert observed == expected

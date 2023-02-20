@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0]
+
+### Added
+ - Add replica trimming for DataObjects
+ - icp to the supported icommands
+ 
+### Changed
+ - Update to ubuntu-latest in github actions
+ - Move from checkout@v2 to @v3
+ - Move from cache@v2 to @v3
+ - 
+ - Bump pytest from 7.2.0 to 7.2.1
+ - Bump black from 22.6.0 to 23.1.0
+ - Bump setuptools-scm from 7.0.5 to 7.1.0
+ - Bump structlog from 21.5.0 to 22.3.0
+
+### Fixed
+ - Do not cache rods_type, but set whewn first known
+
 
 ## [2.0.0]
 

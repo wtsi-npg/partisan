@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   build:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.experimental }} # Experimental builds may fail
 
     defaults:
@@ -19,8 +19,8 @@ jobs:
     strategy:
       matrix:
         include:
-          # iRODS 4.2.11 clients vs 4.2.7 server
-          - irods: "4.2.11"
+          # iRODS 4.2.7 clients vs 4.2.7 server
+          - irods: "4.2.7"
             server_image: "wsinpg/ub-16.04-irods-4.2.7:latest"
             baton: "4.0.0"
             experimental: false
@@ -37,7 +37,7 @@ jobs:
           - 1247:1247
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: "Initialize Miniconda"
       run: |
@@ -45,7 +45,7 @@ jobs:
 
     - name: "Cache Miniconda"
       id: cache-miniconda
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: |
           ~/conda/pkgs
@@ -113,4 +113,5 @@ jobs:
         conda activate "$CONDA_TEST_ENVIRONMENT"
 
         export PYTHONPATH=$PWD/src:$PWD:tests:$PYTHONPATH
+        export IRODS_VERSION="${{ matrix.irods }}"
         pytest --it
