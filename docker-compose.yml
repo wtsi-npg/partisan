@@ -1,7 +1,7 @@
 services:
   irods-server:
     container_name: irods-server
-    image: "wsinpg/ub-18.04-irods-${IRODS_VERSION:-4.2.11}:${DOCKER_TAG:-latest}"
+    image: "ghcr.io/wtsi-npg/ub-18.04-irods-${IRODS_VERSION:-4.2.11}:${DOCKER_TAG:-latest}"
     restart: always
     ports:
       - "1247:1247"
@@ -9,7 +9,7 @@ services:
 
   irods-clients:
     container_name: irods-clients
-    image: "wsinpg/md-bullseye-irods-clients-${IRODS_VERSION:-4.2.11}:${DOCKER_TAG:-latest}"
+    image: "ghcr.io/wtsi-npg/md-bullseye-irods-clients-${IRODS_VERSION:-4.2.11}:${DOCKER_TAG:-latest}"
     volumes:
       - "${PWD}:${PWD}"
       - "${PWD}/tests/.irods:${HOME}/.irods/"
