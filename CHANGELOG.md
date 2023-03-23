@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+ - Add method for getting a list of the values in an AsValueEnum
+
 ## [2.1.0]
 
 ### Added
