@@ -9,7 +9,7 @@ services:
 
   irods-clients:
     container_name: irods-clients
-    image: "ghcr.io/wtsi-npg/md-bullseye-irods-clients-${IRODS_VERSION:-4.2.11}:${DOCKER_TAG:-latest}"
+    image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-${IRODS_VERSION:-4.2.11}:${DOCKER_TAG:-latest}"
     volumes:
       - "${PWD}:${PWD}"
       - "${PWD}/tests/.irods:${HOME}/.irods/"

@@ -30,4 +30,4 @@ docker exec -i $tty_arg \
        -e CLIENT_USER="$CLIENT_USER" \
        -e CLIENT_USER_HOME="$CLIENT_USER_HOME" \
        -e IRODS_ENVIRONMENT_FILE="$IRODS_ENVIRONMENT_FILE" \
-       "$DOCKER_CONTAINER" "/opt/conda/envs/irods/bin/$client" "$@"
+       "$DOCKER_CONTAINER" "$client" "$@"
