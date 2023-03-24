@@ -59,6 +59,10 @@ class AsValueEnum(Enum):
     def __str__(self):
         return str(self.__repr__())
 
+    @classmethod
+    def values(cls) -> list[str]:
+        return [meta.value for meta in cls]
+
 
 @unique
 class DublinCore(AsValueEnum, metaclass=with_namespace("dcterms")):

@@ -31,6 +31,7 @@ class TestMetadata(object):
 
         assert TestEnum.A.value == TestEnum.A.__repr__()
         assert TestEnum.A.value == str(TestEnum.A)
+        assert TestEnum.values() == ["a"]
 
     @m.describe("When a member of the Dublin Core enum is stringified")
     @m.it("Has the expected namespace")
