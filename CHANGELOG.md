@@ -4,11 +4,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.2.0]
 
 ### Added
 
  - Add method for getting a list of the values in an AsValueEnum
+
+### Changed
+
+ - Move to github hosted docker images for ci and docker-compose
+ - Update docker-compose setup to match current images and client locations
+ -
+ - Bump pytest from 7.2.1 to 7.2.2
 
 ## [2.1.0]
 
@@ -27,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Bump structlog from 21.5.0 to 22.3.0
 
 ### Fixed
- - Do not cache rods_type, but set whewn first known
+ - Do not cache rods_type, but set when first known
 
 
 ## [2.0.0]
