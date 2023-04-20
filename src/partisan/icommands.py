@@ -40,6 +40,19 @@ def rmgroup(name: str):
     _run(cmd)
 
 
+def iuserinfo(name: str = None) -> str:
+    cmd = ["iuserinfo"]
+    if name is not None:
+        cmd.append(name)
+    log.debug("Running command", cmd=cmd)
+
+    completed = subprocess.run(cmd, capture_output=True)
+    if completed.returncode == 0:
+        return completed.stdout.decode("utf-8").strip()
+
+    raise RodsError(completed.stderr.decode("utf-8").strip())
+
+
 def imkdir(remote_path: Union[PurePath, str], make_parents=True):
     cmd = ["imkdir"]
     if make_parents:
@@ -98,7 +111,7 @@ def irm(remote_path: Union[PurePath, str], force=False, recurse=False):
 
     cmd.append(remote_path)
 
-    # Workround for iRODS 4.2.7 which insists on raising errors with when the target is
+    # Workaround for iRODS 4.2.7 which insists on raising errors with when the target is
     # absent, even when -f is used. This should be silent for a missing target.
     try:
         _run(cmd)

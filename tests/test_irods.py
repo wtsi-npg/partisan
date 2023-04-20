@@ -33,9 +33,12 @@ from partisan.irods import (
     Collection,
     DataObject,
     Permission,
+    User,
+    current_user,
     make_rods_item,
     query_metadata,
     rods_path_type,
+    rods_user,
 )
 
 
@@ -43,6 +46,52 @@ def irods_version():
     version = os.environ.get("IRODS_VERSION", "4.2.7")
     [major, minor, patch] = [int(elt) for elt in version.split(".")]
     return major, minor, patch
+
+
+@m.describe("User")
+class TestUser:
+    @m.describe("Comparison")
+    def test_compare_user_equal(self):
+        name, id1, id2 = "user1", "1111", "2222"
+        user_type = "rodsuser"
+        this_zone, other_zone = "testZone", "otherZone"
+
+        assert User(name, id1, user_type, this_zone) == User(
+            name, id1, user_type, this_zone
+        )
+
+        assert User(name, id1, user_type, this_zone) != User(
+            name, id1, user_type, other_zone
+        )
+
+        assert User(name, id1, user_type, this_zone) != User(
+            name, id2, user_type, this_zone
+        )
+
+    @m.context("When a user is queried")
+    @m.it("Is returned")
+    def test_rods_user(self):
+        user1 = rods_user("irods")
+        assert user1.name == "irods"
+        assert user1.type == "rodsadmin"
+        assert user1.is_rodsadmin()
+        assert not user1.is_group()
+        assert not user1.is_rodsuser()
+
+        user2 = rods_user("public")
+        assert user2.name == "public"
+        assert user2.type == "rodsgroup"
+        assert user2.is_group()
+        assert not user2.is_rodsuser()
+        assert not user2.is_rodsadmin()
+
+    @m.context("When the current user is queried")
+    @m.it("Is returned")
+    def test_current_user(self):
+        user = current_user()
+        assert user.name == "irods"
+        assert user.type == "rodsadmin"
+        assert user.zone == "testZone"
 
 
 @m.describe("AC")

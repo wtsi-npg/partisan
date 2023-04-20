@@ -22,6 +22,7 @@ from __future__ import annotations  # Will not be needed in Python 3.10
 
 import atexit
 import json
+import re
 import subprocess
 import threading
 from abc import abstractmethod
@@ -46,7 +47,7 @@ from partisan.exception import (
     InvalidJSONError,
     RodsError,
 )
-from partisan.icommands import itrim
+from partisan.icommands import itrim, iuserinfo
 
 log = get_logger(__name__)
 
@@ -1078,6 +1079,81 @@ class Replica(object):
             f"created={self.created} modified={self.modified} "
             f"valid={self.valid}>"
         )
+
+
+@total_ordering
+class User(object):
+    """An iRODS user.
+
+    iRODS represents both individual user accounts and groups of users as "users".
+    Users are compared for equality by Partisan on a combination of their user ID
+    and their zone.
+    """
+
+    def __init__(self, name: str, id: str, type: str, zone: str):
+        self.name = name
+        self.id = id
+        self.type = type
+        self.zone = zone
+
+    def is_rodsadmin(self):
+        """Return True if the user is a rodsadmin."""
+        return self.type == "rodsadmin"
+
+    def is_group(self):
+        """Return True if the user represents a rodsgroup."""
+        return self.type == "rodsgroup"
+
+    def is_rodsuser(self):
+        """Return True if the user is a rodsuser."""
+        return self.type == "rodsuser"
+
+    def __hash__(self):
+        return hash(self.id) + hash(self.zone)
+
+    def __eq__(self, other):
+        if not isinstance(other, User):
+            return False
+
+        return self.id == other.id and self.zone == other.zone
+
+    def __lt__(self, other):
+        if self.zone < other.zone:
+            return True
+        if self.id < other.id:
+            return True
+
+        return False
+
+    def __str__(self):
+        return f"{self.name}#{self.zone}"
+
+
+def rods_user(name: str = None) -> User:
+    """Return information about an iRODS user.
+
+    Args:
+        name: A user name. Optional, defaults to the name of the current user.
+
+    Returns: A new instance of User.
+    """
+    ui = {}
+    for line in iuserinfo(name).splitlines():
+        if ":" in line:
+            key, value = line.split(":", 1)
+            key = key.strip().lower()
+            if key in ["name", "id", "type", "zone"]:
+                ui[key] = value.strip()
+
+    return User(ui["name"], ui["id"], ui["type"], ui["zone"])
+
+
+def current_user() -> User:
+    """Return the current iRODS user.
+
+    Returns: The user's name and their zone.
+    """
+    return rods_user()
 
 
 def rods_type_check(method):
