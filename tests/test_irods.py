@@ -46,7 +46,7 @@ def irods_version():
 
 
 @m.describe("AC")
-class TestAC(object):
+class TestAC:
     @m.describe("Comparison")
     def test_compare_acs_equal(self):
         user = "irods"
@@ -97,7 +97,7 @@ class TestAC(object):
 
 
 @m.describe("AVU")
-class TestAVU(object):
+class TestAVU:
     @m.describe("Comparison")
     def test_compare_avus_equal(self):
         assert AVU("a", 1) == AVU("a", 1)
@@ -145,7 +145,7 @@ class TestAVU(object):
 
 
 @m.describe("RodsPath")
-class TestRodsPath(object):
+class TestRodsPath:
     @m.describe("Support for iRODS path inspection")
     @m.context("When a collection path exists")
     @m.it("Is identified as a collection")
@@ -163,7 +163,7 @@ class TestRodsPath(object):
 
 
 @m.describe("Collection")
-class TestCollection(object):
+class TestCollection:
     @m.describe("Support for str path")
     @m.context("When a Collection is made from a str path")
     @m.it("Can be created")
@@ -403,7 +403,7 @@ class TestCollection(object):
 
 
 @m.describe("DataObject")
-class TestDataObject(object):
+class TestDataObject:
     @m.context("When a DataObject is made from a str path")
     @m.it("Can be created")
     def test_make_data_object_str(self, simple_data_object):
@@ -702,7 +702,7 @@ class TestDataObject(object):
 
 
 @m.describe("Replica management")
-class TestReplicaManagement(object):
+class TestReplicaManagement:
     @m.describe("Data objects with valid replicas")
     @m.context("When trimming would not violate the minimum replica count")
     @m.it("Trims valid replicas")
@@ -771,7 +771,7 @@ class TestReplicaManagement(object):
 
 
 @m.describe("Query Metadata")
-class TestQueryMetadata(object):
+class TestQueryMetadata:
     @m.describe("Query Collection namespace")
     @m.context("When a Collection has metadata")
     @m.it("Can be queried by that metadata, only returning collections")
@@ -824,7 +824,7 @@ class TestQueryMetadata(object):
 
 
 @m.describe("Test special paths (quotes, spaces)")
-class TestSpecialPath(object):
+class TestSpecialPath:
     @m.describe("iRODS paths")
     @m.context("When a Collection has spaces in its path")
     @m.it("Behaves normally")
