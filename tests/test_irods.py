@@ -93,6 +93,12 @@ class TestUser:
         assert user.type == "rodsadmin"
         assert user.zone == "testZone"
 
+    @m.context("When a non-existent user is queried, such as one on another zone")
+    @m.it("Returns None")
+    def test_non_existent_user(self):
+        user = rods_user("no_such_user")
+        assert user is None
+
 
 @m.describe("AC")
 class TestAC:

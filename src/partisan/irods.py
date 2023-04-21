@@ -22,9 +22,9 @@ from __future__ import annotations  # Will not be needed in Python 3.10
 
 import atexit
 import json
-import re
 import subprocess
 import threading
+import typing
 from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
@@ -1129,7 +1129,7 @@ class User(object):
         return f"{self.name}#{self.zone}"
 
 
-def rods_user(name: str = None) -> User:
+def rods_user(name: str = None) -> Optional[User]:
     """Return information about an iRODS user.
 
     Args:
@@ -1144,6 +1144,11 @@ def rods_user(name: str = None) -> User:
             key = key.strip().lower()
             if key in ["name", "id", "type", "zone"]:
                 ui[key] = value.strip()
+
+    if not ui:
+        # This is valid when the user is on present another zone. iuserinfo cannot query
+        # across zones.
+        return None
 
     return User(ui["name"], ui["id"], ui["type"], ui["zone"])
 
