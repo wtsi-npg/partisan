@@ -33,9 +33,12 @@ from partisan.irods import (
     Collection,
     DataObject,
     Permission,
+    User,
+    current_user,
     make_rods_item,
     query_metadata,
     rods_path_type,
+    rods_user,
 )
 
 
@@ -45,8 +48,54 @@ def irods_version():
     return major, minor, patch
 
 
+@m.describe("User")
+class TestUser:
+    @m.describe("Comparison")
+    def test_compare_user_equal(self):
+        name, id1, id2 = "user1", "1111", "2222"
+        user_type = "rodsuser"
+        this_zone, other_zone = "testZone", "otherZone"
+
+        assert User(name, id1, user_type, this_zone) == User(
+            name, id1, user_type, this_zone
+        )
+
+        assert User(name, id1, user_type, this_zone) != User(
+            name, id1, user_type, other_zone
+        )
+
+        assert User(name, id1, user_type, this_zone) != User(
+            name, id2, user_type, this_zone
+        )
+
+    @m.context("When a user is queried")
+    @m.it("Is returned")
+    def test_rods_user(self):
+        user1 = rods_user("irods")
+        assert user1.name == "irods"
+        assert user1.type == "rodsadmin"
+        assert user1.is_rodsadmin()
+        assert not user1.is_group()
+        assert not user1.is_rodsuser()
+
+        user2 = rods_user("public")
+        assert user2.name == "public"
+        assert user2.type == "rodsgroup"
+        assert user2.is_group()
+        assert not user2.is_rodsuser()
+        assert not user2.is_rodsadmin()
+
+    @m.context("When the current user is queried")
+    @m.it("Is returned")
+    def test_current_user(self):
+        user = current_user()
+        assert user.name == "irods"
+        assert user.type == "rodsadmin"
+        assert user.zone == "testZone"
+
+
 @m.describe("AC")
-class TestAC(object):
+class TestAC:
     @m.describe("Comparison")
     def test_compare_acs_equal(self):
         user = "irods"
@@ -97,7 +146,7 @@ class TestAC(object):
 
 
 @m.describe("AVU")
-class TestAVU(object):
+class TestAVU:
     @m.describe("Comparison")
     def test_compare_avus_equal(self):
         assert AVU("a", 1) == AVU("a", 1)
@@ -145,7 +194,7 @@ class TestAVU(object):
 
 
 @m.describe("RodsPath")
-class TestRodsPath(object):
+class TestRodsPath:
     @m.describe("Support for iRODS path inspection")
     @m.context("When a collection path exists")
     @m.it("Is identified as a collection")
@@ -163,7 +212,7 @@ class TestRodsPath(object):
 
 
 @m.describe("Collection")
-class TestCollection(object):
+class TestCollection:
     @m.describe("Support for str path")
     @m.context("When a Collection is made from a str path")
     @m.it("Can be created")
@@ -403,7 +452,7 @@ class TestCollection(object):
 
 
 @m.describe("DataObject")
-class TestDataObject(object):
+class TestDataObject:
     @m.context("When a DataObject is made from a str path")
     @m.it("Can be created")
     def test_make_data_object_str(self, simple_data_object):
@@ -702,7 +751,7 @@ class TestDataObject(object):
 
 
 @m.describe("Replica management")
-class TestReplicaManagement(object):
+class TestReplicaManagement:
     @m.describe("Data objects with valid replicas")
     @m.context("When trimming would not violate the minimum replica count")
     @m.it("Trims valid replicas")
@@ -771,7 +820,7 @@ class TestReplicaManagement(object):
 
 
 @m.describe("Query Metadata")
-class TestQueryMetadata(object):
+class TestQueryMetadata:
     @m.describe("Query Collection namespace")
     @m.context("When a Collection has metadata")
     @m.it("Can be queried by that metadata, only returning collections")
@@ -824,7 +873,7 @@ class TestQueryMetadata(object):
 
 
 @m.describe("Test special paths (quotes, spaces)")
-class TestSpecialPath(object):
+class TestSpecialPath:
     @m.describe("iRODS paths")
     @m.context("When a Collection has spaces in its path")
     @m.it("Behaves normally")
