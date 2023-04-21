@@ -4,30 +4,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0]
+
+### Added
+ - User class, rods_user and current_user functions, iuserinfo icommand
+
+### Changed
+ - Bump black from 23.1.0 to 23.3.0
+ - Bump pytest from 7.2.2 to 7.3.1
+ - Bump structlog from 22.3.0 to 23.1.0
+
 ## [2.2.0]
 
 ### Added
-
- - Add method for getting a list of the values in an AsValueEnum
+ - Method for getting a list of the values in an AsValueEnum
 
 ### Changed
-
  - Move to github hosted docker images for ci and docker-compose
  - Update docker-compose setup to match current images and client locations
- -
+
  - Bump pytest from 7.2.1 to 7.2.2
 
 ## [2.1.0]
 
 ### Added
- - Add replica trimming for DataObjects
+ - Replica trimming for DataObjects
  - icp to the supported icommands
  
 ### Changed
  - Update to ubuntu-latest in github actions
  - Move from checkout@v2 to @v3
  - Move from cache@v2 to @v3
- - 
+ 
  - Bump pytest from 7.2.0 to 7.2.1
  - Bump black from 22.6.0 to 23.1.0
  - Bump setuptools-scm from 7.0.5 to 7.1.0
@@ -35,7 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
  - Do not cache rods_type, but set when first known
-
 
 ## [2.0.0]
 
