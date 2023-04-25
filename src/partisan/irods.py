@@ -24,7 +24,6 @@ import atexit
 import json
 import subprocess
 import threading
-import typing
 from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
@@ -1326,7 +1325,7 @@ class RodsItem(PathLike):
         to_add = sorted(set(avus).difference(current))
 
         if to_add:
-            log.debug("Adding AVUs", path=self.path, avus=to_add)
+            log.debug("Adding AVUs", path=self, avus=to_add)
             item = self._to_dict()
             item[Baton.AVUS] = to_add
             with client(self.pool) as c:
@@ -1350,7 +1349,7 @@ class RodsItem(PathLike):
         to_remove = sorted(set(current).intersection(avus))
 
         if to_remove:
-            log.debug("Removing AVUs", path=self.path, avus=to_remove)
+            log.debug("Removing AVUs", path=self, avus=to_remove)
             item = self._to_dict()
             item[Baton.AVUS] = to_remove
             with client(self.pool) as c:
@@ -1388,7 +1387,7 @@ class RodsItem(PathLike):
             history_date = datetime.utcnow()
 
         current = self.metadata()
-        log.debug("Superseding AVUs", path=self.path, old=current, new=avus)
+        log.debug("Superseding AVUs", path=self, old=current, new=avus)
 
         rem_attrs = set(map(lambda avu: avu.attribute, avus))
         to_remove = set(filter(lambda a: a.attribute in rem_attrs, current))
@@ -1398,7 +1397,7 @@ class RodsItem(PathLike):
         to_remove.difference_update(avus)
         to_remove = sorted(to_remove)
         if to_remove:
-            log.debug("Removing AVUs", path=self.path, avus=to_remove)
+            log.debug("Removing AVUs", path=self, avus=to_remove)
             item = self._to_dict()
             item[Baton.AVUS] = to_remove
             with client(self.pool) as c:
@@ -1412,7 +1411,7 @@ class RodsItem(PathLike):
             to_add += hist
 
         if to_add:
-            log.debug("Adding AVUs", path=self.path, avus=to_add)
+            log.debug("Adding AVUs", path=self, avus=to_add)
             item = self._to_dict()
             item[Baton.AVUS] = to_add
             with client(self.pool) as c:
@@ -1436,8 +1435,9 @@ class RodsItem(PathLike):
         """
         current = self.acl()
         to_add = sorted(set(acs).difference(current))
+        log.debug("Adding to ACL", path=self, curr=current, arg=acs, add=to_add)
+
         if to_add:
-            log.debug("Adding to ACL", path=self.path, ac=to_add)
             item = self._to_dict()
             item[Baton.ACCESS] = to_add
             with client(self.pool) as c:
@@ -1461,9 +1461,9 @@ class RodsItem(PathLike):
         """
         current = self.acl()
         to_remove = sorted(set(current).intersection(acs))
-        if to_remove:
-            log.debug("Removing from ACL", path=self.path, ac=to_remove)
+        log.debug("Removing from ACL", path=self, curr=current, arg=acs, rem=to_remove)
 
+        if to_remove:
             # In iRODS we "remove" permissions by setting them to NULL
             for ac in to_remove:
                 ac.perm = Permission.NULL
@@ -1492,11 +1492,11 @@ class RodsItem(PathLike):
         Returns: Tuple[int, int]
         """
         current = self.acl()
-        log.debug("Superseding ACL", path=self.path, old=current, new=acs)
+        log.debug("Superseding ACL", path=self, old=current, new=acs)
 
         to_remove = sorted(set(current).difference(acs))
         if to_remove:
-            log.debug("Removing from ACL", path=self.path, ac=to_remove)
+            log.debug("Removing from ACL", path=self, ac=to_remove)
 
             # In iRODS we "remove" permissions by setting them to NULL
             for ac in to_remove:
@@ -1509,7 +1509,7 @@ class RodsItem(PathLike):
 
         to_add = sorted(set(acs).difference(current))
         if to_add:
-            log.debug("Adding to ACL", path=self.path, ac=to_add)
+            log.debug("Adding to ACL", path=self, ac=to_add)
             item = self._to_dict()
             item[Baton.ACCESS] = to_add
             with client(self.pool) as c:
@@ -1578,7 +1578,38 @@ class RodsItem(PathLike):
         if Baton.ACCESS not in item:
             raise BatonError(f"{Baton.ACCESS} key missing from {item}")
 
-        return sorted(item[Baton.ACCESS])
+        # iRODS ACL queries can sometimes return multiple results where a user appears
+        # to have has both "own" and "read" permissions simultaneously. Since "own"
+        # subsumes "read" this is confusing and can have unwanted effects e.g. copying
+        # permissions from one collection to another will effectively remove "own" if
+        # the source collection has both "own"" and "read", and the "read" permission
+        # is copied after "own". Yes - when copying these permissions to another item,
+        # iRODS now treats "own" and "read" are states that cannot be held
+        # simultaneously and will delete the first when the second is applied.
+        #
+        # The source collection in the cases we observe are created with the iput
+        # icommand, the destination collection with the mkdir API call.
+        by_user = {}
+        for ac in item[Baton.ACCESS]:
+            key = (ac.user, ac.zone)
+            if key in by_user:
+                by_user[key].add(ac)
+            else:
+                by_user[key] = {ac}
+
+        acl = []
+        for key, acs in by_user.items():
+            # If the item apparently has both "own" and "read" permissions, for a user,
+            # only report "own".
+            if len(acs) > 1:
+                own = {x for x in acs if x.perm == Permission.OWN}
+                read = {x for x in acs if x.perm == Permission.READ}
+                if own and read:
+                    acs.difference_update(read)
+
+            acl.append(*acs)
+
+        return sorted(acl)
 
     def __lt__(self, other):
         if isinstance(self, Collection) and isinstance(other, DataObject):
@@ -1690,9 +1721,7 @@ class DataObject(RodsItem):
 
         rt = self.rods_type
         if rt is not None and rt != DataObject:
-            raise BatonError(
-                f"Invalid iRODS path type {rt} for a data object: {self.path}"
-            )
+            raise BatonError(f"Invalid iRODS path type {rt} for a data object: {self}")
 
     @rods_type_check
     def list(self, timeout=None, tries=1) -> DataObject:
@@ -2083,9 +2112,7 @@ class Collection(RodsItem):
 
         rt = self.rods_type
         if rt is not None and rt != Collection:
-            raise BatonError(
-                f"Invalid iRODS path type {rt} for a collection: {self.path}"
-            )
+            raise BatonError(f"Invalid iRODS path type {rt} for a collection: {self}")
 
     @rods_type_check
     def contents(
