@@ -12,65 +12,77 @@ jobs:
         shell: bash -l -e -o pipefail {0}
 
     env:
-      WSI_CONDA_CHANNEL: "https://dnap.cog.sanger.ac.uk/npg/conda/devel/generic"
-      CONDA_TEST_ENVIRONMENT: "testenv"
       PYTHON_VERSION: "3.10"
+      SINGULARITY_VERSION: "3.11.1"
 
     strategy:
       matrix:
         include:
-          # iRODS 4.2.7 clients vs 4.2.7 server
+          # iRODS 4.2.11 clients vs 4.2.7 server
           - irods: "4.2.7"
+            client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.11:latest"
             server_image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest"
-            baton: "4.0.0"
             experimental: false
           # iRODS 4.2.11 clients vs 4.2.11 server
           - irods: "4.2.11"
+            client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.11:latest"
             server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.11:latest"
-            baton: "4.0.0"
             experimental: false
 
     services:
-      irods:
+      irods-server:
         image: ${{ matrix.server_image }}
         ports:
-          - 1247:1247
+          - "1247:1247"
+          - "20000-20199:20000-20199"
+        options: >-
+          --health-cmd "nc -z -v localhost 1247"
+          --health-start-period 30s
+          --health-interval 10s
+          --health-timeout 20s
+          --health-retries 6
 
     steps:
     - uses: actions/checkout@v3
 
-    - name: "Initialize Miniconda"
+    - name: "Install Singularity"
       run: |
-        echo 'source $CONDA/etc/profile.d/conda.sh' >> "$HOME/.bash_profile"
+        pkg="singularity-ce_${SINGULARITY_VERSION}-$(lsb_release -sc)_amd64.deb"
+        curl -sSL -O "https://github.com/sylabs/singularity/releases/download/v${SINGULARITY_VERSION}/$pkg"
+        curl -sSL -O "https://github.com/sylabs/singularity/releases/download/v${SINGULARITY_VERSION}/sha256sums"
+        grep "$os_release" sha256sums | sha256sum
+        sudo apt-get install -q -y "./$pkg"
+                
+        # Avoid the runner's loop devices being exhausted
+        sudo singularity config global --set "max loop devices" 128
+        
+        # Enable DBus for this user, so that rootless cgroups works and we can create
+        # Singularity service instances. See https://github.com/containers/podman/issues/5443
+        systemctl --user enable --now dbus.socket
+        echo DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus" >> $GITHUB_ENV
 
-    - name: "Cache Miniconda"
-      id: cache-miniconda
+    - name: "Cache Singularity images"
       uses: actions/cache@v3
       with:
-        path: |
-          ~/conda/pkgs
-          ~/conda/envs
-        key: ${{ runner.os }}-miniconda
+        path: ${{ github.workspace }}/.singularity-cache
+        key: ${{ runner.os }}-singularity
 
-    - name: "Configure Miniconda"
+    - name: "Install iRODS client wrappers"
+      env:
+        DOCKER_IMAGE: ${{ matrix.client_image }}
+        PREFIX: ${{ github.workspace }}
+        SINGULARITY_CACHEDIR: ${{ github.workspace }}/.singularity-cache
       run: |
-        conda config --prepend pkgs_dirs "$HOME/conda/pkgs"
-        conda config --prepend envs_dirs "$HOME/conda/envs"
-
-        conda config --set auto_update_conda False
-        conda config --prepend channels "$WSI_CONDA_CHANNEL"
-        conda info
-
-    - name: "Install iRODS clients"
-      run: |
-        conda create -y -n "$CONDA_TEST_ENVIRONMENT"
-        conda install -y -n "$CONDA_TEST_ENVIRONMENT" "irods-icommands=${{ matrix.irods }}"
-        conda install -y -n "$CONDA_TEST_ENVIRONMENT" "baton=${{ matrix.baton }}"
+        # Use -s option for the wrappers to enable re-usable service instances
+        singularity exec docker://$DOCKER_IMAGE singularity-wrapper -s -p $PREFIX install
+        echo "$PREFIX/bin" >> $GITHUB_PATH
 
     - name: "Configure iRODS clients"
+      env:
+        DOCKER_IMAGE: ${{ matrix.client_image }}
+        PREFIX: ${{ github.workspace }}
+        SINGULARITY_CACHEDIR: ${{ github.workspace }}/.singularity-cache
       run: |
-        conda activate "$CONDA_TEST_ENVIRONMENT"
-
         mkdir -p "$HOME/.irods"
         cat <<'EOF' > "$HOME/.irods/irods_environment.json"
         {
@@ -86,32 +98,33 @@ jobs:
 
         echo "irods" | script -q -c "iinit" /dev/null
         ienv
-        ilsresc
         ils
-
+        ilsresc
+        
         baton-do --version
 
-    - name: "Setup Python {{ env.PYTHON_VERSION }}"
-      run: |
-        conda activate "$CONDA_TEST_ENVIRONMENT"
-        conda install -c defaults python="$PYTHON_VERSION"
+    - uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: "pip"
 
     - name: "Setup Python dependencies"
       run: |
-        conda activate "$CONDA_TEST_ENVIRONMENT"
         pip install -r requirements.txt
         pip install -r test-requirements.txt
 
     - name: "Check code formatting [Black]"
       run: |
-        conda activate "$CONDA_TEST_ENVIRONMENT"
-
         black --check --diff --quiet .
 
     - name: "Run tests"
+      env:
+        IRODS_VERSION: ${{ matrix.irods }}
+        SINGULARITY_CACHEDIR: ${{ github.workspace }}/.singularity-cache
       run: |
-        conda activate "$CONDA_TEST_ENVIRONMENT"
-
-        export PYTHONPATH=$PWD/src:$PWD:tests:$PYTHONPATH
-        export IRODS_VERSION="${{ matrix.irods }}"
+        pip install .
         pytest --it
+
+    - name: "Log on failure"
+      if: ${{ failure() }}
+      run: journalctl --no-pager
