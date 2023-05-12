@@ -1284,6 +1284,37 @@ class RodsItem(PathLike):
         """
         return self._exists(timeout=timeout, tries=tries)
 
+    def avu(self, attr: str, timeout=None, tries=1) -> AVU:
+        """Return an unique AVU from the item's metadata, given an attribute, or raise
+        an error.
+
+        Args:
+            attr: The attribute of the expected AVU.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns:
+
+        """
+        avus = [
+            avu
+            for avu in self.metadata(timeout=timeout, tries=tries)
+            if avu.attribute == attr
+        ]
+
+        if not avus:
+            raise ValueError(
+                f"Metadata of {self} did not contain any AVU with "
+                f"attribute '{attr}'"
+            )
+        if len(avus) > 1:
+            raise ValueError(
+                f"Metadata of '{self}' contained more than one AVU with "
+                f"attribute '{attr}': {avus}"
+            )
+
+        return avus[0]
+
     def has_metadata(self, *avus: AVU, timeout=None, tries=1) -> bool:
         """Return True if all the argument AVUs are in the item's metadata.
 

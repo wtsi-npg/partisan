@@ -418,6 +418,23 @@ class TestCollection:
             coll.remove_metadata(avu1, avu2) == 0
         ), "removing collection metadata is idempotent"
 
+    @m.it("Can be searched for an AVU with an unique attribute")
+    def test_avu_collection(self, simple_collection):
+        coll = Collection(simple_collection)
+        avu = AVU("abcde", "12345")
+
+        with pytest.raises(ValueError, match="did not contain any AVU with attribute"):
+            coll.avu("abcde")
+        coll.add_metadata(avu)
+
+        assert coll.avu("abcde") == avu
+
+        coll.add_metadata(AVU("abcde", "67890"))
+        with pytest.raises(
+            ValueError, match="contained more than one AVU with attribute"
+        ):
+            coll.avu("abcde")
+
     @m.it("Can be found by its metadata")
     def test_meta_query_collection(self, simple_collection):
         coll = Collection(simple_collection)
@@ -665,6 +682,23 @@ class TestDataObject:
         assert (
             obj.remove_metadata(avu1, avu2) == 0
         ), "removing data object metadata is idempotent"
+
+    @m.it("Can be searched for an AVU with an unique attribute")
+    def test_avu_collection(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+        avu = AVU("abcde", "12345")
+
+        with pytest.raises(ValueError, match="did not contain any AVU with attribute"):
+            obj.avu("abcde")
+        obj.add_metadata(avu)
+
+        assert obj.avu("abcde") == avu
+
+        obj.add_metadata(AVU("abcde", "67890"))
+        with pytest.raises(
+            ValueError, match="contained more than one AVU with attribute"
+        ):
+            obj.avu("abcde")
 
     @m.it("Can have metadata replaced")
     def test_repl_meta_data_object(self, simple_data_object):
