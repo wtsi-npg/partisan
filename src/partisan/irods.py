@@ -768,8 +768,15 @@ class AC(object):
         return (
             isinstance(other, AC)
             and self.user == other.user
-            and self.zone == other.zone
             and self.perm == other.perm
+            and (
+                (self.zone is None and other.zone is None)
+                or (
+                    self.zone is not None
+                    and other.zone is not None
+                    and self.zone == other.zone
+                )
+            )
         )
 
     def __lt__(self, other):
@@ -950,7 +957,14 @@ class AVU(object):
         return (
             self.attribute == other.attribute
             and self.value == other.value
-            and self.units == other.units
+            and (
+                (self.units is None and other.units is None)
+                or (
+                    self.units is not None
+                    and other.units is not None
+                    and self.units == other.units
+                )
+            )
         )
 
     def __lt__(self, other):
@@ -1014,6 +1028,8 @@ class Replica(object):
             raise ValueError("Replica resource may not be None")
         if location is None:
             raise ValueError("Replica location may not be None")
+        if number is None:
+            raise ValueError("Replica number may not be None")
 
         self.resource = resource
         self.location = location
@@ -1044,7 +1060,14 @@ class Replica(object):
             self.number == other.number
             and self.resource == other.resource
             and self.location == other.location
-            and self.checksum == other.checksum
+            and (
+                (self.checksum is None and other.checksum is None)
+                or (
+                    self.checksum is not None
+                    and other.checksum is not None
+                    and self.checksum == other.checksum
+                )
+            )
             and self.valid == other.valid
         )
 
@@ -1061,12 +1084,19 @@ class Replica(object):
                     return True
 
                 if self.location == other.location:
-                    if self.checksum < other.checksum:
+                    if self.checksum is not None and other.checksum is None:
                         return True
 
-                    if self.checksum == other.checksum:
-                        if self.valid < other.valid:
+                    if self.checksum is None and other.checksum is not None:
+                        return False
+
+                    if self.checksum is not None and other.checksum is not None:
+                        if self.checksum < other.checksum:
                             return True
+
+                    if self.checksum == other.checksum:
+                        return self.valid < other.valid
+
         return False
 
     def __repr__(self):
@@ -1549,10 +1579,11 @@ class RodsItem(PathLike):
         return len(to_remove), len(to_add)
 
     @rods_type_check
-    def metadata(self, timeout=None, tries=1) -> List[AVU]:
+    def metadata(self, attr: str = None, timeout=None, tries=1) -> List[AVU]:
         """Return the item's metadata.
 
         Args:
+            attr: Return only AVUs having this attribute.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1562,7 +1593,11 @@ class RodsItem(PathLike):
         if Baton.AVUS not in item:
             raise BatonError(f"{Baton.AVUS} key missing from {item}")
 
-        return sorted(item[Baton.AVUS])
+        avus = item[Baton.AVUS]
+        if attr is not None:
+            avus = [avu for avu in avus if avu.attribute == attr]
+
+        return sorted(avus)
 
     def collated_metadata(self, timeout=None, tries=1) -> dict[str:list]:
         """Return a dictionary mapping AVU attributes to lists of corresponding AVU
