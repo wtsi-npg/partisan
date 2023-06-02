@@ -154,6 +154,24 @@ def annotated_collection(simple_collection):
 
 
 @pytest.fixture(scope="function")
+def full_collection(tmp_path):
+    """A fixture providing a collection with some contents"""
+    root_path = PurePath("/testZone/home/irods/test")
+    rods_path = add_rods_path(root_path, tmp_path)
+
+    iput("./tests/data/recursive/", rods_path, recurse=True)
+    coll_path = rods_path / "recursive"
+
+    try:
+        add_test_groups()
+
+        yield coll_path
+    finally:
+        remove_test_groups()
+        irm(root_path, force=True, recurse=True)
+
+
+@pytest.fixture(scope="function")
 def simple_data_object(tmp_path):
     """A fixture providing a collection containing a single data object containing
     UTF-8 data."""

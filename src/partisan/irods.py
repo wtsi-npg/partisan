@@ -1481,14 +1481,13 @@ class RodsItem(PathLike):
         return len(to_remove), len(to_add)
 
     @rods_type_check
-    def add_permissions(self, *acs: AC, recurse=False, timeout=None, tries=1) -> int:
+    def add_permissions(self, *acs: AC, timeout=None, tries=1) -> int:
         """Add access controls to the item. Return the number of access
         controls added. If some argument access controls are already present,
         those arguments will be ignored.
 
         Args:
             *acs: Access controls.
-            recurse: Recursively add access control.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1496,25 +1495,30 @@ class RodsItem(PathLike):
         """
         current = self.acl()
         to_add = sorted(set(acs).difference(current))
-        log.debug("Adding to ACL", path=self, curr=current, arg=acs, add=to_add)
+        log.debug(
+            "Adding to ACL",
+            path=self,
+            curr=current,
+            arg=acs,
+            add=to_add,
+        )
 
         if to_add:
             item = self._to_dict()
             item[Baton.ACCESS] = to_add
             with client(self.pool) as c:
-                c.set_permission(item, recurse=recurse, timeout=timeout, tries=tries)
+                c.set_permission(item, timeout=timeout, tries=tries)
 
         return len(to_add)
 
     @rods_type_check
-    def remove_permissions(self, *acs: AC, recurse=False, timeout=None, tries=1) -> int:
+    def remove_permissions(self, *acs: AC, timeout=None, tries=1) -> int:
         """Remove access controls from the item. Return the number of access
         controls removed. If some argument access controls are not present, those
         arguments will be ignored.
 
         Args:
             *acs: Access controls.
-            recurse: Recursively add access control.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1522,31 +1526,33 @@ class RodsItem(PathLike):
         """
         current = self.acl()
         to_remove = sorted(set(current).intersection(acs))
-        log.debug("Removing from ACL", path=self, curr=current, arg=acs, rem=to_remove)
+        log.debug(
+            "Removing from ACL",
+            path=self,
+            curr=current,
+            arg=acs,
+            rem=to_remove,
+        )
 
         if to_remove:
             # In iRODS we "remove" permissions by setting them to NULL
-            for ac in to_remove:
-                ac.perm = Permission.NULL
+            to_null = [AC(ac.user, Permission.NULL, zone=ac.zone) for ac in to_remove]
 
             item = self._to_dict()
-            item[Baton.ACCESS] = to_remove
+            item[Baton.ACCESS] = to_null
             with client(self.pool) as c:
-                c.set_permission(item, recurse=recurse, timeout=timeout, tries=tries)
+                c.set_permission(item, timeout=timeout, tries=tries)
 
         return len(to_remove)
 
     @rods_type_check
-    def supersede_permissions(
-        self, *acs: AC, recurse=False, timeout=None, tries=1
-    ) -> Tuple[int, int]:
+    def supersede_permissions(self, *acs: AC, timeout=None, tries=1) -> Tuple[int, int]:
         """Remove all access controls from the item, replacing them with the
         specified access controls. Return the numbers of access controls
         removed and added.
 
         Args:
             *acs: Access controls.
-            recurse: Recursively supersede access controls.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1557,16 +1563,17 @@ class RodsItem(PathLike):
 
         to_remove = sorted(set(current).difference(acs))
         if to_remove:
+            # If recurse is true, we want to do this update, even if the target path
+            # has the required ACL because child paths may not have the ACL.
             log.debug("Removing from ACL", path=self, ac=to_remove)
 
             # In iRODS we "remove" permissions by setting them to NULL
-            for ac in to_remove:
-                ac.perm = Permission.NULL
+            to_null = [AC(ac.user, Permission.NULL, zone=ac.zone) for ac in to_remove]
 
             item = self._to_dict()
-            item[Baton.ACCESS] = to_remove
+            item[Baton.ACCESS] = to_null
             with client(self.pool) as c:
-                c.set_permission(item, recurse=recurse, timeout=timeout, tries=tries)
+                c.set_permission(item, timeout=timeout, tries=tries)
 
         to_add = sorted(set(acs).difference(current))
         if to_add:
@@ -1574,7 +1581,7 @@ class RodsItem(PathLike):
             item = self._to_dict()
             item[Baton.ACCESS] = to_add
             with client(self.pool) as c:
-                c.set_permission(item, recurse=recurse, timeout=timeout, tries=tries)
+                c.set_permission(item, timeout=timeout, tries=tries)
 
         return len(to_remove), len(to_add)
 
@@ -2302,6 +2309,71 @@ class Collection(RodsItem):
             tries: Number of times to try the operation.
         """
         raise NotImplementedError()
+
+    def add_permissions(self, *acs: AC, recurse=False, timeout=None, tries=1) -> int:
+        """Add access controls to the collection. Return the number of access
+        controls added. If some argument access controls are already present,
+        those arguments will be ignored.
+
+        Args:
+            *acs: Access controls.
+            recurse: Recursively add access controls.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: int
+        """
+        num_added = super().add_permissions(*acs, timeout=timeout, tries=tries)
+        if recurse:
+            for item in self.iter_contents(recurse=recurse):
+                num_added += item.add_permissions(*acs, timeout=timeout, tries=tries)
+        return num_added
+
+    def remove_permissions(self, *acs: AC, recurse=False, timeout=None, tries=1) -> int:
+        """Remove access controls from the collection. Return the number of access
+        controls removed. If some argument access controls are not present, those
+        arguments will be ignored.
+
+        Args:
+            *acs: Access controls.
+            recurse: Recursively remove access controls.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: int
+        """
+        num_removed = super().remove_permissions(*acs, timeout=timeout, tries=tries)
+        if recurse:
+            for item in self.iter_contents(recurse=recurse):
+                num_removed += item.remove_permissions(
+                    *acs, timeout=timeout, tries=tries
+                )
+        return num_removed
+
+    def supersede_permissions(
+        self, *acs: AC, recurse=False, timeout=None, tries=1
+    ) -> Tuple[int, int]:
+        """Remove all access controls from the collection, replacing them with the
+        specified access controls. Return the numbers of access controls
+        removed and added.
+
+        Args:
+            *acs: Access controls.
+            recurse: Recursively supersede access controls.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: Tuple[int, int]
+        """
+        num_removed, num_added = super().supersede_permissions(
+            *acs, timeout=timeout, tries=tries
+        )
+        if recurse:
+            for item in self.iter_contents(recurse=recurse):
+                nr, na = item.supersede_permissions(*acs, timeout=timeout, tries=tries)
+                num_removed += nr
+                num_added += na
+        return num_removed, num_added
 
     def _list(self, **kwargs) -> List[dict]:
         with client(self.pool) as c:
