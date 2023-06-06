@@ -1486,6 +1486,9 @@ class RodsItem(PathLike):
         controls added. If some argument access controls are already present,
         those arguments will be ignored.
 
+        This method handles only the permissions of this RodsItem. See the Collection
+        class for methods handling recursive operations.
+
         Args:
             *acs: Access controls.
             timeout: Operation timeout in seconds.
@@ -1516,6 +1519,9 @@ class RodsItem(PathLike):
         """Remove access controls from the item. Return the number of access
         controls removed. If some argument access controls are not present, those
         arguments will be ignored.
+
+        This method handles only the permissions of this RodsItem. See the Collection
+        class for methods handling recursive operations.
 
         Args:
             *acs: Access controls.
@@ -1551,6 +1557,9 @@ class RodsItem(PathLike):
         specified access controls. Return the numbers of access controls
         removed and added.
 
+        This method handles only the permissions of this RodsItem. See the Collection
+        class for methods handling recursive operations.
+
         Args:
             *acs: Access controls.
             timeout: Operation timeout in seconds.
@@ -1563,8 +1572,6 @@ class RodsItem(PathLike):
 
         to_remove = sorted(set(current).difference(acs))
         if to_remove:
-            # If recurse is true, we want to do this update, even if the target path
-            # has the required ACL because child paths may not have the ACL.
             log.debug("Removing from ACL", path=self, ac=to_remove)
 
             # In iRODS we "remove" permissions by setting them to NULL
