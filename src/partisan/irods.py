@@ -310,8 +310,8 @@ class Baton:
         Args:
             avus: The query, expressed as AVUs.
             zone: The iRODS zone name.
-            collection: Query collection metadata, default true.
-            data_object: Query data object metadata, default true.
+            collection: Query collection metadata, default false.
+            data_object: Query data object metadata, default false.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
 
