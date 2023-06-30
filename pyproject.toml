@@ -1,0 +1,48 @@
+[project]
+name = "partisan"
+description = "A Python API for iRODS using the baton iRODS client"
+license = { file = "LICENSE", content-type = "text/plain" }
+readme = { file = "README.md", content-type = "text/markdown" }
+authors = [{ name = "Keith James", email = "kdj@sanger.ac.uk" }]
+maintainers = [{ name = "Michael Kubiak", email = "mk35@sanger.ac.uk" }]
+classifiers = ["Development Status :: 5 - Production/Stable",
+               "Intended Audience :: Developers",
+               "Programming Language :: Python"]
+keywords = ["irods", "baton", "api"]
+requires-python = ">=3.10"
+
+dynamic = ["version"]
+
+dependencies = [
+    "click",
+    "python-dateutil",
+    "structlog"
+]
+
+[project.optional-dependencies]
+test = [
+    "black",
+    "pytest",
+    "pytest-it"
+]
+
+[project.entry-points.console_scripts]
+pls = "partisan.cli:pls"
+
+
+[project.urls]
+homepage = "https://github.com/wtsi-npg/partisan"
+repository = "https://github.com/wtsi-npg/partisan.git"
+
+[build-system]
+requires = ["setuptools>=41", "wheel", "setuptools-git-versioning<2"]
+
+[tool.setuptools]
+# Note: we are relying on setuptools' automatic package discovery, so no further
+# configuration is required. This is possible because partisan uses a standard src
+# layout. See the following for more information:
+#
+# https://setuptools.pypa.io/en/latest/userguide/package_discovery.html#src-layout
+
+[tool.setuptools-git-versioning]
+enabled = true
