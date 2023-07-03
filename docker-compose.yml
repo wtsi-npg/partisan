@@ -14,8 +14,8 @@ services:
       - "${PWD}:${PWD}"
       - "${PWD}/tests/.irods:${HOME}/.irods/"
     environment:
-      CLIENT_USER: "${USER:? \nERROR: The USER environment variable is unset}"
-      CLIENT_USER_ID: "${UID:? \nERROR: The UID environment variable is unset}"
+      CLIENT_USER: "${USER:? ERROR: The USER environment variable is unset}"
+      CLIENT_USER_ID: "${UID:? ERROR: The UID environment variable is unset}"
       CLIENT_USER_HOME: "${HOME}"
       IRODS_ENVIRONMENT_FILE: "${HOME}/.irods/irods_environment.json"
     command: sleep infinity
