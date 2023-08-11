@@ -754,7 +754,7 @@ class AC(object):
                 "zone= keyword argument to set a zone"
             )
 
-        if zone:
+        if zone is not None:
             if zone.find(AC.SEPARATOR) >= 0:
                 raise ValueError(f"Zone '{zone}' contained '{AC.SEPARATOR}'")
         self.user = user
@@ -784,7 +784,7 @@ class AC(object):
             return True
 
         if self.zone is None and other.zone is not None:
-            return True
+            return False
 
         if self.zone is not None and other.zone is not None:
             if self.zone < other.zone:
@@ -822,18 +822,41 @@ class AVU(object):
     """The attribute history suffix"""
 
     def __init__(self, attribute: Any, value: Any, units=None, namespace=None):
-        if namespace:
-            if namespace.find(AVU.SEPARATOR) >= 0:
-                raise ValueError(
-                    f"AVU namespace '{namespace}' contained '{AVU.SEPARATOR}'"
-                )
+        """Create a new AVU instance.
+
+        Args:
+            attribute: The attribute to use. If this is not a string, the string
+               representation of this argument becomes the attribute.
+            value: The value to use. If this is not a string, the string
+               representation of this argument becomes the value.
+            units: The units to use. Optional, defaults to None.
+            namespace: The namespace (prefix) to be used for the attribute. Optional,
+               but if supplied, must be the same as any existing namespace on the
+               attribute string.
+        """
         if attribute is None:
             raise ValueError("AVU attribute may not be None")
         if value is None:
             raise ValueError("AVU value may not be None")
+        if namespace is None:
+            namespace = ""
+
+        attr = str(attribute)
+        if attr.find(AVU.SEPARATOR) >= 0:
+            ns, at = attr.split(AVU.SEPARATOR, maxsplit=1)
+            if namespace and ns != namespace:
+                raise ValueError(
+                    f"AVU attribute namespace '{ns}' did not match "
+                    f"the declared namespace '{namespace}' for "
+                    f"attribute '{attr}', value '{value}'"
+                )
+            namespace, attr = ns, at
+
+        if namespace.find(AVU.SEPARATOR) >= 0:
+            raise ValueError(f"AVU namespace '{namespace}' contained '{AVU.SEPARATOR}'")
 
         self._namespace = namespace
-        self._attribute = str(attribute)
+        self._attribute = attr
         self._value = str(value)
         self._units = units
 
@@ -916,7 +939,7 @@ class AVU(object):
 
     @property
     def attribute(self):
-        """The attribute, including namespace, if any. The namespace and attribute are
+        """The attribute, including namespace, if any. The namespace an attribute are
         separated by AVU.SEPARATOR."""
         if self._namespace:
             return f"{self._namespace}{AVU.SEPARATOR}{self._attribute}"
@@ -968,12 +991,13 @@ class AVU(object):
         )
 
     def __lt__(self, other):
-        if self.namespace is not None and other.namespace is None:
+        if self.namespace and not other.namespace:
             return True
-        if self.namespace is None and other.namespace is not None:
+
+        if not self.namespace and other.namespace:
             return False
 
-        if self.namespace is not None and other.namespace is not None:
+        if self.namespace and other.namespace:
             if self.namespace < other.namespace:
                 return True
 
@@ -1314,41 +1338,35 @@ class RodsItem(PathLike):
         """
         return self._exists(timeout=timeout, tries=tries)
 
-    def avu(self, attr: Any, namespace=None, timeout=None, tries=1) -> AVU:
+    def avu(self, attribute: Any, timeout=None, tries=1) -> AVU:
         """Return an unique AVU from the item's metadata, given an attribute, or raise
         an error.
 
         Args:
-            attr: The attribute of the expected AVU. This must be the bare attribute
-               string, without any namespace.
-            namespace: The namespace of the expected AVU. Optional.
+            attribute: The attribute of the expected AVU. If this is not a string,
+               the string representation of this argument is used.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
         Returns:
-
+            A single AVU with the specified attribute.
         """
-        # Allows convenient use of args that have string representations which are AVU attributes
-        attr = str(attr)
-
-        # Construct a dummy AVU as a convenience to get namespaced attribute string
-        ns_attr = AVU(attr, "dummy", namespace=namespace).attribute
+        attr = str(attribute)
         avus = [
             avu
             for avu in self.metadata(timeout=timeout, tries=tries)
-            if avu.attribute == ns_attr
+            if avu.attribute == attr
         ]
 
-        ns_msg = f" in namespace '{namespace}'" if namespace else ""
         if not avus:
             raise ValueError(
                 f"Metadata of {self} did not contain any AVU with "
-                f"attribute '{attr}'{ns_msg}"
+                f"attribute '{attr}'"
             )
         if len(avus) > 1:
             raise ValueError(
                 f"Metadata of '{self}' contained more than one AVU with "
-                f"attribute '{attr}'{ns_msg}: {avus}"
+                f"attribute '{attr}': {avus}"
             )
 
         return avus[0]
@@ -1365,19 +1383,19 @@ class RodsItem(PathLike):
         """
         return set(avus).issubset(self.metadata(timeout=timeout, tries=tries))
 
-    def has_metadata_attrs(self, *attrs: str, timeout=None, tries=1) -> bool:
-        """Return True if all the argument attributes are in the item's metadata. The
-        caller must set the namespace(s) appropriately on the attrs before calling this
-        methods as each attribute many have different (or no) namespace.
+    def has_metadata_attrs(self, *attributes: Any, timeout=None, tries=1) -> bool:
+        """Return True if all the argument attributes are in the item's metadata.
 
         Args:
-            *attrs: One or more attributes to test.
+            *attributes: One or more attributes to test. If any of these are not strings,
+               their string representations is used.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
         Returns: True if every attribute is present in at least one AVU.
         """
         collated = self.collated_metadata(timeout=timeout, tries=tries)
+        attrs = [str(a) for a in attributes]
         return set(attrs).issubset(collated.keys())
 
     @rods_type_check
@@ -1603,11 +1621,12 @@ class RodsItem(PathLike):
         return len(to_remove), len(to_add)
 
     @rods_type_check
-    def metadata(self, attr: str = None, timeout=None, tries=1) -> List[AVU]:
+    def metadata(self, attribute: Any = None, timeout=None, tries=1) -> List[AVU]:
         """Return the item's metadata.
 
         Args:
-            attr: Return only AVUs having this attribute.
+            attribute: Return only AVUs having this attribute. If this is not a string,
+               the string representation of this argument is used.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1618,7 +1637,8 @@ class RodsItem(PathLike):
             raise BatonError(f"{Baton.AVUS} key missing from {item}")
 
         avus = item[Baton.AVUS]
-        if attr is not None:
+        if attribute is not None:
+            attr = str(attribute)
             avus = [avu for avu in avus if avu.attribute == attr]
 
         return sorted(avus)

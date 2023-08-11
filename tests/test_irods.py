@@ -104,55 +104,94 @@ class TestUser:
 class TestAC:
     @m.describe("Comparison")
     def test_compare_acs_equal(self):
-        user = "irods"
-        zone = "testZone"
-
-        assert AC(user, Permission.OWN, zone=zone) == AC(
-            user, Permission.OWN, zone=zone
+        assert AC("aaa", Permission.OWN, zone="x") == AC(
+            "aaa", Permission.OWN, zone="x"
         )
 
-        assert AC(user, Permission.OWN, zone=zone) != AC(
-            user, Permission.READ, zone=zone
+        assert AC("aaa", Permission.OWN, zone="x") != AC(
+            "aaa", Permission.READ, zone="x"
         )
 
-        assert AC(user, Permission.OWN, zone=zone) != AC(
-            "public", Permission.OWN, zone=zone
+        assert AC("aaa", Permission.OWN, zone="x") != AC(
+            "bbb", Permission.OWN, zone="x"
         )
 
     def test_compare_acs_lt(self):
-        user = "irods"
-        zone = "testZone"
+        assert AC("aaa", Permission.OWN) < AC("bbb", Permission.OWN)
+        assert AC("aaa", Permission.OWN) < AC("aaa", Permission.READ)
 
-        assert AC(user, Permission.OWN, zone=zone) < AC(
-            "public", Permission.OWN, zone=zone
-        )
-
-        assert AC(user, Permission.NULL, zone=zone) < AC(
-            user, Permission.OWN, zone=zone
+        # Zoned AC sorts lowest
+        assert AC("aaa", Permission.OWN, zone="x") < AC("aaa", Permission.OWN)
+        assert AC("aaa", Permission.READ, zone="x") < AC(
+            "aaa", Permission.OWN, zone="y"
         )
 
     def test_compare_acs_sort(self):
-        zone = "testZone"
         acl = [
-            AC("zzz", Permission.OWN, zone=zone),
-            AC("aaa", Permission.WRITE, zone=zone),
-            AC("aaa", Permission.READ, zone=zone),
-            AC("zyy", Permission.READ, zone=zone),
-            AC("zyy", Permission.OWN, zone=zone),
+            AC("zzz", Permission.OWN, zone="x"),
+            AC("aaa", Permission.WRITE, zone="x"),
+            AC("aaa", Permission.READ, zone="x"),
+            AC("zyy", Permission.READ, zone="x"),
+            AC("zyy", Permission.OWN, zone="x"),
         ]
         acl.sort()
-
         assert acl == [
-            AC("aaa", Permission.READ, zone=zone),
-            AC("aaa", Permission.WRITE, zone=zone),
-            AC("zyy", Permission.OWN, zone=zone),
-            AC("zyy", Permission.READ, zone=zone),
-            AC("zzz", Permission.OWN, zone=zone),
+            AC("aaa", Permission.READ, zone="x"),
+            AC("aaa", Permission.WRITE, zone="x"),
+            AC("zyy", Permission.OWN, zone="x"),
+            AC("zyy", Permission.READ, zone="x"),
+            AC("zzz", Permission.OWN, zone="x"),
+        ]
+
+        acl = [
+            AC("zyy", Permission.OWN),
+            AC("aaa", Permission.WRITE),
+            AC("zyy", Permission.READ, zone="x"),
+            AC("aaa", Permission.READ),
+            AC("zyy", Permission.OWN, zone="x"),
+        ]
+        acl.sort()
+        assert acl == [
+            AC("zyy", Permission.OWN, zone="x"),
+            AC("zyy", Permission.READ, zone="x"),
+            AC("aaa", Permission.READ),
+            AC("aaa", Permission.WRITE),
+            AC("zyy", Permission.OWN),
         ]
 
 
 @m.describe("AVU")
 class TestAVU:
+    @m.describe("Namespaces")
+    def test_create_with_namespaced_attribute(self):
+        assert AVU("a", 1).namespace == ""
+        assert AVU("a", 1).attribute == "a"
+        assert AVU("a", 1).without_namespace == "a"
+
+        assert AVU("a", 1, namespace="x").namespace == "x"
+        assert AVU("a", 1, namespace="x").attribute == "x:a"
+        assert AVU("a", 1, namespace="x").without_namespace == "a"
+
+        assert AVU("x:a", 1).namespace == "x"
+        assert AVU("x:a", 1).attribute == "x:a"
+        assert AVU("x:a", 1).without_namespace == "a"
+
+        with pytest.raises(ValueError, match="did not match the declared namespace"):
+            AVU("y:a", 1, namespace="x")
+
+        # We can handle attributes with colons
+        assert AVU("x::a", 1).namespace == "x"
+        assert AVU("x::a", 1).attribute == "x::a"
+        assert AVU("x::a", 1).without_namespace == ":a"
+
+        assert AVU("x:a:", 1).namespace == "x"
+        assert AVU("x:a:", 1).attribute == "x:a:"
+        assert AVU("x:a:", 1).without_namespace == "a:"
+
+        assert AVU("x:a:b", 1).namespace == "x"
+        assert AVU("x:a:b", 1).attribute == "x:a:b"
+        assert AVU("x:a:b", 1).without_namespace == "a:b"
+
     @m.describe("Comparison")
     def test_compare_avus_equal(self):
         assert AVU("a", 1) == AVU("a", 1)
@@ -421,53 +460,19 @@ class TestCollection:
     @m.it("Can be searched for an AVU with an unique attribute")
     def test_avu_collection(self, simple_collection):
         coll = Collection(simple_collection)
-        attr = "abcde"
-        avu = AVU(attr, "12345")
+        avu = AVU("abcde", "12345")
 
         with pytest.raises(ValueError, match="did not contain any AVU with attribute"):
-            coll.avu(attr)
+            coll.avu("abcde")
         coll.add_metadata(avu)
 
-        assert coll.avu(attr) == avu
+        assert coll.avu("abcde") == avu
 
-        coll.add_metadata(AVU(attr, "67890"))
+        coll.add_metadata(AVU("abcde", "67890"))
         with pytest.raises(
             ValueError, match="contained more than one AVU with attribute"
         ):
-            coll.avu(attr)
-
-    @m.it("Can be searched for an AVU with an unique namespaced attribute")
-    def test_avu_collection_ns(self, simple_collection):
-        coll = Collection(simple_collection)
-        attr = "abcde"
-        ns = "test"
-        avu = AVU(attr, "12345", namespace=ns)
-
-        with pytest.raises(
-            ValueError, match=f"did not contain any AVU with attribute '{attr}'"
-        ):
-            coll.avu(attr)
-        with pytest.raises(
-            ValueError,
-            match=f"did not contain any AVU with attribute '{attr}' in namespace '{ns}'",
-        ):
-            coll.avu(attr, namespace=ns)
-
-        coll.add_metadata(avu)
-
-        with pytest.raises(
-            ValueError, match=f"did not contain any AVU with attribute '{attr}'"
-        ):
-            coll.avu(attr)
-
-        assert coll.avu(attr, namespace=ns) == avu
-
-        other_ns = "other"
-        with pytest.raises(
-            ValueError,
-            match=f"did not contain any AVU with attribute '{attr}' in namespace '{other_ns}'",
-        ):
-            coll.avu(attr, namespace=other_ns)
+            coll.avu("abcde")
 
     @m.it("Can be found by its metadata")
     def test_meta_query_collection(self, simple_collection):
@@ -876,55 +881,21 @@ class TestDataObject:
         ), "removing data object metadata is idempotent"
 
     @m.it("Can be searched for an AVU with an unique attribute")
-    def test_avu_data_object(self, simple_data_object):
+    def test_avu_collection(self, simple_data_object):
         obj = DataObject(simple_data_object)
-        attr = "abcde"
-        avu = AVU(attr, "12345")
+        avu = AVU("abcde", "12345")
 
         with pytest.raises(ValueError, match="did not contain any AVU with attribute"):
-            obj.avu(attr)
+            obj.avu("abcde")
         obj.add_metadata(avu)
 
-        assert obj.avu(attr) == avu
+        assert obj.avu("abcde") == avu
 
-        obj.add_metadata(AVU(attr, "67890"))
+        obj.add_metadata(AVU("abcde", "67890"))
         with pytest.raises(
             ValueError, match="contained more than one AVU with attribute"
         ):
-            obj.avu(attr)
-
-    @m.it("Can be searched for an AVU with an unique namespaced attribute")
-    def test_avu_data_object_ns(self, simple_data_object):
-        obj = DataObject(simple_data_object)
-        attr = "abcde"
-        ns = "test"
-        avu = AVU(attr, "12345", namespace=ns)
-
-        with pytest.raises(
-            ValueError, match=f"did not contain any AVU with attribute '{attr}'"
-        ):
-            obj.avu(attr)
-        with pytest.raises(
-            ValueError,
-            match=f"did not contain any AVU with attribute '{attr}' in namespace '{ns}'",
-        ):
-            obj.avu(attr, namespace=ns)
-
-        obj.add_metadata(avu)
-
-        with pytest.raises(
-            ValueError, match=f"did not contain any AVU with attribute '{attr}'"
-        ):
-            obj.avu(attr)
-
-        assert obj.avu(attr, namespace=ns) == avu
-
-        other_ns = "other"
-        with pytest.raises(
-            ValueError,
-            match=f"did not contain any AVU with attribute '{attr}' in namespace '{other_ns}'",
-        ):
-            obj.avu(attr, namespace=other_ns)
+            obj.avu("abcde")
 
     @m.it("Can have metadata superseded")
     def test_supersede_meta_data_object(self, simple_data_object):
