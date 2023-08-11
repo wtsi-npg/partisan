@@ -916,7 +916,7 @@ class AVU(object):
 
     @property
     def attribute(self):
-        """The attribute, including namespace, if any. The namespace an attribute are
+        """The attribute, including namespace, if any. The namespace and attribute are
         separated by AVU.SEPARATOR."""
         if self._namespace:
             return f"{self._namespace}{AVU.SEPARATOR}{self._attribute}"
@@ -1314,33 +1314,41 @@ class RodsItem(PathLike):
         """
         return self._exists(timeout=timeout, tries=tries)
 
-    def avu(self, attr: str, timeout=None, tries=1) -> AVU:
+    def avu(self, attr: Any, namespace=None, timeout=None, tries=1) -> AVU:
         """Return an unique AVU from the item's metadata, given an attribute, or raise
         an error.
 
         Args:
-            attr: The attribute of the expected AVU.
+            attr: The attribute of the expected AVU. This must be the bare attribute
+               string, without any namespace.
+            namespace: The namespace of the expected AVU. Optional.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
         Returns:
 
         """
+        # Allows convenient use of args that have string representations which are AVU attributes
+        attr = str(attr)
+
+        # Construct a dummy AVU as a convenience to get namespaced attribute string
+        ns_attr = AVU(attr, "dummy", namespace=namespace).attribute
         avus = [
             avu
             for avu in self.metadata(timeout=timeout, tries=tries)
-            if avu.attribute == attr
+            if avu.attribute == ns_attr
         ]
 
+        ns_msg = f" in namespace '{namespace}'" if namespace else ""
         if not avus:
             raise ValueError(
                 f"Metadata of {self} did not contain any AVU with "
-                f"attribute '{attr}'"
+                f"attribute '{attr}'{ns_msg}"
             )
         if len(avus) > 1:
             raise ValueError(
                 f"Metadata of '{self}' contained more than one AVU with "
-                f"attribute '{attr}': {avus}"
+                f"attribute '{attr}'{ns_msg}: {avus}"
             )
 
         return avus[0]
@@ -1358,7 +1366,9 @@ class RodsItem(PathLike):
         return set(avus).issubset(self.metadata(timeout=timeout, tries=tries))
 
     def has_metadata_attrs(self, *attrs: str, timeout=None, tries=1) -> bool:
-        """Return True if all the argument attributes are in the item's metadata.
+        """Return True if all the argument attributes are in the item's metadata. The
+        caller must set the namespace(s) appropriately on the attrs before calling this
+        methods as each attribute many have different (or no) namespace.
 
         Args:
             *attrs: One or more attributes to test.

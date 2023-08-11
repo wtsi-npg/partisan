@@ -421,19 +421,53 @@ class TestCollection:
     @m.it("Can be searched for an AVU with an unique attribute")
     def test_avu_collection(self, simple_collection):
         coll = Collection(simple_collection)
-        avu = AVU("abcde", "12345")
+        attr = "abcde"
+        avu = AVU(attr, "12345")
 
         with pytest.raises(ValueError, match="did not contain any AVU with attribute"):
-            coll.avu("abcde")
+            coll.avu(attr)
         coll.add_metadata(avu)
 
-        assert coll.avu("abcde") == avu
+        assert coll.avu(attr) == avu
 
-        coll.add_metadata(AVU("abcde", "67890"))
+        coll.add_metadata(AVU(attr, "67890"))
         with pytest.raises(
             ValueError, match="contained more than one AVU with attribute"
         ):
-            coll.avu("abcde")
+            coll.avu(attr)
+
+    @m.it("Can be searched for an AVU with an unique namespaced attribute")
+    def test_avu_collection_ns(self, simple_collection):
+        coll = Collection(simple_collection)
+        attr = "abcde"
+        ns = "test"
+        avu = AVU(attr, "12345", namespace=ns)
+
+        with pytest.raises(
+            ValueError, match=f"did not contain any AVU with attribute '{attr}'"
+        ):
+            coll.avu(attr)
+        with pytest.raises(
+            ValueError,
+            match=f"did not contain any AVU with attribute '{attr}' in namespace '{ns}'",
+        ):
+            coll.avu(attr, namespace=ns)
+
+        coll.add_metadata(avu)
+
+        with pytest.raises(
+            ValueError, match=f"did not contain any AVU with attribute '{attr}'"
+        ):
+            coll.avu(attr)
+
+        assert coll.avu(attr, namespace=ns) == avu
+
+        other_ns = "other"
+        with pytest.raises(
+            ValueError,
+            match=f"did not contain any AVU with attribute '{attr}' in namespace '{other_ns}'",
+        ):
+            coll.avu(attr, namespace=other_ns)
 
     @m.it("Can be found by its metadata")
     def test_meta_query_collection(self, simple_collection):
@@ -842,21 +876,55 @@ class TestDataObject:
         ), "removing data object metadata is idempotent"
 
     @m.it("Can be searched for an AVU with an unique attribute")
-    def test_avu_collection(self, simple_data_object):
+    def test_avu_data_object(self, simple_data_object):
         obj = DataObject(simple_data_object)
-        avu = AVU("abcde", "12345")
+        attr = "abcde"
+        avu = AVU(attr, "12345")
 
         with pytest.raises(ValueError, match="did not contain any AVU with attribute"):
-            obj.avu("abcde")
+            obj.avu(attr)
         obj.add_metadata(avu)
 
-        assert obj.avu("abcde") == avu
+        assert obj.avu(attr) == avu
 
-        obj.add_metadata(AVU("abcde", "67890"))
+        obj.add_metadata(AVU(attr, "67890"))
         with pytest.raises(
             ValueError, match="contained more than one AVU with attribute"
         ):
-            obj.avu("abcde")
+            obj.avu(attr)
+
+    @m.it("Can be searched for an AVU with an unique namespaced attribute")
+    def test_avu_data_object_ns(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+        attr = "abcde"
+        ns = "test"
+        avu = AVU(attr, "12345", namespace=ns)
+
+        with pytest.raises(
+            ValueError, match=f"did not contain any AVU with attribute '{attr}'"
+        ):
+            obj.avu(attr)
+        with pytest.raises(
+            ValueError,
+            match=f"did not contain any AVU with attribute '{attr}' in namespace '{ns}'",
+        ):
+            obj.avu(attr, namespace=ns)
+
+        obj.add_metadata(avu)
+
+        with pytest.raises(
+            ValueError, match=f"did not contain any AVU with attribute '{attr}'"
+        ):
+            obj.avu(attr)
+
+        assert obj.avu(attr, namespace=ns) == avu
+
+        other_ns = "other"
+        with pytest.raises(
+            ValueError,
+            match=f"did not contain any AVU with attribute '{attr}' in namespace '{other_ns}'",
+        ):
+            obj.avu(attr, namespace=other_ns)
 
     @m.it("Can have metadata superseded")
     def test_supersede_meta_data_object(self, simple_data_object):
