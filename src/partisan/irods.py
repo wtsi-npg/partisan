@@ -1352,25 +1352,26 @@ class RodsItem(PathLike):
             A single AVU with the specified attribute.
         """
         attr = str(attribute)
-        # avus = [
-        #     avu
-        #     for avu in self.metadata(timeout=timeout, tries=tries)
-        #     if avu.attribute == attr
-        # ]
-        avus = []
-        for avu in self.metadata(timeout=timeout, tries=tries):
-            log.debug(
-                "Checking for AVU",
-                path=self,
-                target=attr,
-                avu_attr=avu.attribute,
-                avu_ns=avu.namespace,
-                avu_wo_ns=avu.without_namespace)
-            if avu.attribute == attr:
-                log.debug("Found AVU", present=avu)
-                avus.append(avu)
-            else:
-                log.debug("Not found AVU", absent=avu)
+        avus = [
+            avu
+            for avu in self.metadata(timeout=timeout, tries=tries)
+            if avu.attribute == attr
+        ]
+        # avus = []
+        # for avu in self.metadata(timeout=timeout, tries=tries):
+        #     log.debug(
+        #         "Checking for AVU",
+        #         path=self,
+        #         target=attr,
+        #         avu_attr=avu.attribute,
+        #         avu_ns=avu.namespace,
+        #         avu_wo_ns=avu.without_namespace,
+        #     )
+        #     if avu.attribute == attr:
+        #         log.debug("Found AVU", present=avu)
+        #         avus.append(avu)
+        #     else:
+        #         log.debug("Not found AVU", absent=avu)
 
         if not avus:
             raise ValueError(
