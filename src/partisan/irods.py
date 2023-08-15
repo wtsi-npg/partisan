@@ -1687,7 +1687,7 @@ class RodsItem(PathLike):
                 if own and read:
                     acs.difference_update(read)
 
-            acl.append(*acs)
+            acl.extend(acs)
 
         return sorted(acl)
 
