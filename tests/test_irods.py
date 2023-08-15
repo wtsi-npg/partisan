@@ -104,55 +104,110 @@ class TestUser:
 class TestAC:
     @m.describe("Comparison")
     def test_compare_acs_equal(self):
-        user = "irods"
-        zone = "testZone"
-
-        assert AC(user, Permission.OWN, zone=zone) == AC(
-            user, Permission.OWN, zone=zone
+        assert AC("aaa", Permission.OWN, zone="x") == AC(
+            "aaa", Permission.OWN, zone="x"
         )
 
-        assert AC(user, Permission.OWN, zone=zone) != AC(
-            user, Permission.READ, zone=zone
+        assert AC("aaa", Permission.OWN, zone="x") != AC(
+            "aaa", Permission.READ, zone="x"
         )
 
-        assert AC(user, Permission.OWN, zone=zone) != AC(
-            "public", Permission.OWN, zone=zone
+        assert AC("aaa", Permission.OWN, zone="x") != AC(
+            "bbb", Permission.OWN, zone="x"
         )
 
     def test_compare_acs_lt(self):
-        user = "irods"
-        zone = "testZone"
+        assert AC("aaa", Permission.OWN) < AC("bbb", Permission.OWN)
+        assert AC("aaa", Permission.OWN) < AC("aaa", Permission.READ)
 
-        assert AC(user, Permission.OWN, zone=zone) < AC(
-            "public", Permission.OWN, zone=zone
-        )
-
-        assert AC(user, Permission.NULL, zone=zone) < AC(
-            user, Permission.OWN, zone=zone
+        # Zoned AC sorts lowest
+        assert AC("aaa", Permission.OWN, zone="x") < AC("aaa", Permission.OWN)
+        assert AC("aaa", Permission.READ, zone="x") < AC(
+            "aaa", Permission.OWN, zone="y"
         )
 
     def test_compare_acs_sort(self):
-        zone = "testZone"
         acl = [
-            AC("zzz", Permission.OWN, zone=zone),
-            AC("aaa", Permission.WRITE, zone=zone),
-            AC("aaa", Permission.READ, zone=zone),
-            AC("zyy", Permission.READ, zone=zone),
-            AC("zyy", Permission.OWN, zone=zone),
+            AC("zzz", Permission.OWN, zone="x"),
+            AC("aaa", Permission.WRITE, zone="x"),
+            AC("aaa", Permission.READ, zone="x"),
+            AC("zyy", Permission.READ, zone="x"),
+            AC("zyy", Permission.OWN, zone="x"),
         ]
         acl.sort()
-
         assert acl == [
-            AC("aaa", Permission.READ, zone=zone),
-            AC("aaa", Permission.WRITE, zone=zone),
-            AC("zyy", Permission.OWN, zone=zone),
-            AC("zyy", Permission.READ, zone=zone),
-            AC("zzz", Permission.OWN, zone=zone),
+            AC("aaa", Permission.READ, zone="x"),
+            AC("aaa", Permission.WRITE, zone="x"),
+            AC("zyy", Permission.OWN, zone="x"),
+            AC("zyy", Permission.READ, zone="x"),
+            AC("zzz", Permission.OWN, zone="x"),
+        ]
+
+        acl = [
+            AC("zyy", Permission.OWN),
+            AC("aaa", Permission.WRITE),
+            AC("zyy", Permission.READ, zone="x"),
+            AC("aaa", Permission.READ),
+            AC("zyy", Permission.OWN, zone="x"),
+        ]
+        acl.sort()
+        assert acl == [
+            AC("zyy", Permission.OWN, zone="x"),
+            AC("zyy", Permission.READ, zone="x"),
+            AC("aaa", Permission.READ),
+            AC("aaa", Permission.WRITE),
+            AC("zyy", Permission.OWN),
         ]
 
 
 @m.describe("AVU")
 class TestAVU:
+    @m.describe("Namespaces")
+    def test_create_with_namespaced_attribute(self):
+        assert AVU("a", 1).namespace == ""
+        assert AVU("a", 1).attribute == "a"
+        assert AVU("a", 1).without_namespace == "a"
+
+        assert AVU("a", 1, namespace="x").namespace == "x"
+        assert AVU("a", 1, namespace="x").attribute == "x:a"
+        assert AVU("a", 1, namespace="x").without_namespace == "a"
+
+        assert AVU("x:a", 1).namespace == "x"
+        assert AVU("x:a", 1).attribute == "x:a"
+        assert AVU("x:a", 1).without_namespace == "a"
+
+        with pytest.raises(ValueError, match="AVU namespace contained a separator"):
+            AVU("a", 1, namespace="x:")
+
+        with pytest.raises(ValueError, match="did not match the declared namespace"):
+            AVU("y:a", 1, namespace="x")
+
+        # We can handle attributes with colons
+        assert AVU("x::a", 1).namespace == "x"
+        assert AVU("x::a", 1).attribute == "x::a"
+        assert AVU("x::a", 1).without_namespace == ":a"
+
+        assert AVU("x:a:", 1).namespace == "x"
+        assert AVU("x:a:", 1).attribute == "x:a:"
+        assert AVU("x:a:", 1).without_namespace == "a:"
+
+        assert AVU("x:a:b", 1).namespace == "x"
+        assert AVU("x:a:b", 1).attribute == "x:a:b"
+        assert AVU("x:a:b", 1).without_namespace == "a:b"
+
+        # We can handle attributes with multiple colons
+        assert AVU("x:a::", 1).namespace == "x"
+        assert AVU("x:a::", 1).attribute == "x:a::"
+        assert AVU("x:a::", 1).without_namespace == "a::"
+
+        assert AVU("x::a:", 1).namespace == "x"
+        assert AVU("x::a:", 1).attribute == "x::a:"
+        assert AVU("x::a:", 1).without_namespace == ":a:"
+
+        assert AVU("x:::a", 1).namespace == "x"
+        assert AVU("x:::a", 1).attribute == "x:::a"
+        assert AVU("x:::a", 1).without_namespace == "::a"
+
     @m.describe("Comparison")
     def test_compare_avus_equal(self):
         assert AVU("a", 1) == AVU("a", 1)
