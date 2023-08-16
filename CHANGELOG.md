@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [2.6.0]
+
+### Added
+
+ - namespace keyword to RodsItem::avu method
+ - attribute argument stringification to RodsItem::avu method
+ - pyproject.toml
+
+### Removed
+
+ - setup.py
+
+### Changed
+
+ - Bump click from 8.1.3 to 8.1.6
+ - Bump setuptools from 68.0.0 to 68.1.0
+ - Bump setuptools-git-versioning from 1.13.3 to 1.13.5
+ - Bump black from 23.3.0 to 23.7.0
+ - Bump pytest from 7.3.1 to 7.4.0
+
+### Fixed 
+
+ - Appending multiple ACLs internal to RodsItem::acl method
+ - Docstring errors
+
 ## [2.5.1]
 
 ### Fixed
@@ -13,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
  - attr parameter to RodsItem::metadata method
- - iRODS 4.2.12 to CI.
+ - iRODS 4.2.12 to CI
  
 ## [2.4.0]
 
