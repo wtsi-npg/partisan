@@ -149,13 +149,19 @@ def icp(
 
 def iquest(*args) -> str:
     """Run a non-paged iquest command with the specified arguments and return the
-    result as a string."""
+    result as a string. If the command returned no results, return an empty string."""
     cmd = ["iquest", "--no-page", *args]
     log.debug("Running command", cmd=cmd)
 
     completed = subprocess.run(cmd, capture_output=True)
     if completed.returncode == 0:
         return completed.stdout.decode("utf-8").strip()
+
+    # As of iRODS 4.2.12, iquest behaves from like commands such as grep and
+    # exits with a special error code of 1 to indicate a successful query that
+    # returned an empty result.
+    if completed.returncode == 1:
+        return ""
 
     raise RodsError(completed.stderr.decode("utf-8").strip())
 
