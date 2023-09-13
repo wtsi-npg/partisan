@@ -39,6 +39,7 @@ from partisan.irods import (
     query_metadata,
     rods_path_type,
     rods_user,
+    rods_users,
 )
 
 
@@ -98,6 +99,20 @@ class TestUser:
     def test_non_existent_user(self):
         user = rods_user("no_such_user")
         assert user is None
+
+    @m.context("When a list of users is queried")
+    @m.it("Is returned")
+    def test_rods_users(self):
+        assert [user.name for user in rods_users()] == ["rodsadmin", "public", "irods"]
+        assert [user.name for user in rods_users(user_type="rodsgroup")] == [
+            "rodsadmin",
+            "public",
+        ]
+        assert [user.name for user in rods_users(user_type="rodsadmin")] == ["irods"]
+        assert [user.name for user in rods_users(user_type="rodsuser")] == []
+
+        with pytest.raises(ValueError, match="Invalid user type"):
+            rods_users(user_type="invalid type")
 
 
 @m.describe("AC")

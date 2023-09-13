@@ -46,7 +46,7 @@ from partisan.exception import (
     InvalidJSONError,
     RodsError,
 )
-from partisan.icommands import itrim, iuserinfo
+from partisan.icommands import iquest, itrim, iuserinfo
 
 log = get_logger(__name__)
 
@@ -1180,6 +1180,9 @@ class User(object):
 
         return False
 
+    def __repr__(self):
+        return f"<{self.name}#{self.zone} ({self.type})>"
+
     def __str__(self):
         return f"{self.name}#{self.zone}"
 
@@ -1188,7 +1191,7 @@ def rods_user(name: str = None) -> Optional[User]:
     """Return information about an iRODS user.
 
     Args:
-        name: A user name. Optional, defaults to the name of the current user.
+        name: A username. Optional, defaults to the name of the current user.
 
     Returns: A new instance of User.
     """
@@ -1206,6 +1209,44 @@ def rods_user(name: str = None) -> Optional[User]:
         return None
 
     return User(ui["name"], ui["id"], ui["type"], ui["zone"])
+
+
+def rods_users(user_type: str = None, zone=None) -> list[User]:
+    """Return a list of iRODS users registered in the specified zone, optionally
+    limited to a specific user type.
+
+    Args:
+        user_type: An iRODS user type to select. Only users of this type will be
+            reported. Optional, one of rodsadmin, rodsgroup or rodsuser.
+        zone: An iRODS zone on which to run the query. Note that this NOT the same
+            as a user's zone. e.g. user alice#foo may have permissions on zone bar.
+            Using an argument zone=bar is asking for the query to run on zone bar,
+            which may then return alice#foo i.e. a user with zone other than bar.
+
+    Returns:
+        A list of users in the specified zone.
+    """
+    if user_type is not None and user_type not in [
+        "rodsadmin",
+        "rodsgroup",
+        "rodsuser",
+    ]:
+        raise ValueError(f"Invalid user type requested: {user_type}")
+
+    args = []
+    if zone is not None:
+        args.extend(["-z", zone])
+    args.extend(["%s\t%s\t%s\t%s", "select USER_NAME, USER_ID, USER_TYPE, USER_ZONE"])
+
+    users = []
+    for line in iquest(*args).splitlines():
+        name, uid, utype, zone = line.split("\t")
+        users.append(User(name, uid, utype, zone))
+
+    if user_type is not None:
+        users = [user for user in users if user.type == user_type]
+
+    return sorted(users)
 
 
 def current_user() -> User:
@@ -1665,27 +1706,36 @@ class RodsItem(PathLike):
 
         return collated
 
-    def permissions(self, timeout=None, tries=1) -> List[AC]:
+    def permissions(self, user_type: str = None, timeout=None, tries=1) -> List[AC]:
         """Return the item's Access Control List (ACL). Synonym for acl().
 
         Args:
+            user_type: Filter to include only permissions for users of this type.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
         Returns: List[AC]
         """
-        return self.acl(timeout=timeout, tries=tries)
+        return self.acl(user_type=user_type, timeout=timeout, tries=tries)
 
     @rods_type_check
-    def acl(self, timeout=None, tries=1) -> List[AC]:
+    def acl(self, user_type: str = None, timeout=None, tries=1) -> List[AC]:
         """Return the item's Access Control List (ACL). Synonym for permissions().
 
         Args:
+            user_type: Filter to include only permissions for users of this type.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
         Returns: List[AC]
         """
+        if user_type is not None and user_type not in [
+            "rodsadmin",
+            "rodsgroup",
+            "rodsuser",
+        ]:
+            raise ValueError(f"Invalid user type requested: {type}")
+
         item = self._list(acl=True, timeout=timeout, tries=tries).pop()
         if Baton.ACCESS not in item:
             raise BatonError(f"{Baton.ACCESS} key missing from {item}")
@@ -1694,7 +1744,7 @@ class RodsItem(PathLike):
         # to have has both "own" and "read" permissions simultaneously. Since "own"
         # subsumes "read" this is confusing and can have unwanted effects e.g. copying
         # permissions from one collection to another will effectively remove "own" if
-        # the source collection has both "own"" and "read", and the "read" permission
+        # the source collection has both "own" and "read", and the "read" permission
         # is copied after "own". Yes - when copying these permissions to another item,
         # iRODS now treats "own" and "read" are states that cannot be held
         # simultaneously and will delete the first when the second is applied.
@@ -1718,8 +1768,11 @@ class RodsItem(PathLike):
                 read = {x for x in acs if x.perm == Permission.READ}
                 if own and read:
                     acs.difference_update(read)
-
             acl.extend(acs)
+
+        if user_type is not None:
+            by_name = {user.name: user for user in rods_users(user_type=user_type)}
+            acl = [ac for ac in acl if ac.user not in by_name]
 
         return sorted(acl)
 
