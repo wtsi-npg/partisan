@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0]
+
+### Added
+
+ - New rods_users function to list all users
+ - New user_type keyword for the existing RodsItem::acl/permissions
+
+### Changed
+
+ - Bump black from 23.7.0 to 23.9.1
+ - Bump click from 8.1.6 to 8.1.7
+ - Bump pytest from 7.4.0 to 7.4.2
+ - Bump setuptools from 68.1.2 to 68.2.2
+
+
 ## [2.7.0]
 
 ### Added
@@ -12,7 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Bump click from 8.1.6 to 8.1.7
 - Bump setuptools from 68.1.0 to 68.1.2
 
 ## [2.6.0]
