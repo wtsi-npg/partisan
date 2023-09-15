@@ -119,7 +119,7 @@ jobs:
 
     - name: "Check code formatting [Black]"
       run: |
-        black --check --diff --quiet .
+        black --check --diff ./src ./tests
 
     - name: "Run tests"
       env:
