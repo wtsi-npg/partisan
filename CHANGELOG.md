@@ -4,29 +4,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.1]
+
+### Fixed
+ - Incorrect return value when using the user_type keyword for
+   RodsItem::acl/permissions 
+
 ## [2.8.0]
 
 ### Added
-
  - New rods_users function to list all users
  - New user_type keyword for the existing RodsItem::acl/permissions
 
 ### Changed
-
  - Bump black from 23.7.0 to 23.9.1
  - Bump click from 8.1.6 to 8.1.7
  - Bump pytest from 7.4.0 to 7.4.2
  - Bump setuptools from 68.1.2 to 68.2.2
 
-
 ## [2.7.0]
 
 ### Added
-
 - Support for iRODS 4.2.12 iquest "no results found" exit code
 
 ### Changed
-
 - Bump setuptools from 68.1.0 to 68.1.2
 
 ## [2.6.0]
@@ -38,19 +39,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - pyproject.toml
 
 ### Removed
-
  - setup.py
 
 ### Changed
-
  - Bump click from 8.1.3 to 8.1.6
  - Bump setuptools from 68.0.0 to 68.1.0
  - Bump setuptools-git-versioning from 1.13.3 to 1.13.5
  - Bump black from 23.3.0 to 23.7.0
  - Bump pytest from 7.3.1 to 7.4.0
 
-### Fixed 
-
+### Fixed
  - Appending multiple ACLs internal to RodsItem::acl method
  - Docstring errors
 
