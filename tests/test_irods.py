@@ -568,6 +568,18 @@ class TestCollection:
         for item in coll.contents(recurse=True):
             assert item.acl() == [irods_own], "Collection content ACL unchanged"
 
+    @m.it("Can have its permissions listed")
+    def test_list_ac_collection(self, full_collection):
+        zone = "testZone"
+        coll = Collection(full_collection)
+        irods_own = AC("irods", Permission.OWN, zone=zone)
+        public_read = AC("public", Permission.READ, zone=zone)
+        assert coll.add_permissions(public_read) == 1
+
+        assert coll.acl() == [irods_own, public_read]
+        assert coll.acl(user_type="rodsadmin") == [irods_own]
+        assert coll.acl(user_type="rodsgroup") == [public_read]
+
     @m.it("Can have access controls added, recursively")
     def test_add_ac_collection_recurse(self, full_collection):
         zone = "testZone"
@@ -994,6 +1006,18 @@ class TestDataObject:
         public_read = AC("public", Permission.READ, zone=zone)
         assert obj.add_permissions(public_read) == 1
         assert obj.acl() == [irods_own, public_read]
+
+    @m.it("Can have its permissions listed")
+    def test_list_ac_data_object(self, simple_data_object):
+        zone = "testZone"
+        obj = DataObject(simple_data_object)
+        irods_own = AC("irods", Permission.OWN, zone=zone)
+        public_read = AC("public", Permission.READ, zone=zone)
+        assert obj.add_permissions(public_read) == 1
+
+        assert obj.acl() == [irods_own, public_read]
+        assert obj.acl(user_type="rodsadmin") == [irods_own]
+        assert obj.acl(user_type="rodsgroup") == [public_read]
 
     @m.it("Can have access controls removed")
     def test_rem_ac_data_object(self, simple_data_object):
