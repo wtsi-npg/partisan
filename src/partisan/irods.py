@@ -1772,7 +1772,7 @@ class RodsItem(PathLike):
 
         if user_type is not None:
             by_name = {user.name: user for user in rods_users(user_type=user_type)}
-            acl = [ac for ac in acl if ac.user not in by_name]
+            acl = [ac for ac in acl if ac.user in by_name]
 
         return sorted(acl)
 
