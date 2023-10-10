@@ -191,7 +191,13 @@ class TestAVU:
         assert AVU("x:a", 1).attribute == "x:a"
         assert AVU("x:a", 1).without_namespace == "a"
 
-        with pytest.raises(ValueError, match="AVU namespace contained a separator"):
+        with pytest.raises(ValueError, match="may not be entirely whitespace"):
+            AVU(" ", 1)
+
+        with pytest.raises(ValueError, match="may not be entirely whitespace"):
+            AVU("a", 1, namespace=" ")
+
+        with pytest.raises(ValueError, match="namespace contained a separator"):
             AVU("a", 1, namespace="x:")
 
         with pytest.raises(ValueError, match="did not match the declared namespace"):
@@ -222,6 +228,19 @@ class TestAVU:
         assert AVU("x:::a", 1).namespace == "x"
         assert AVU("x:::a", 1).attribute == "x:::a"
         assert AVU("x:::a", 1).without_namespace == "::a"
+
+        # We can handle iRODS' own AVUs that it adds sometimes
+        assert AVU("irods::a", 1).namespace == AVU.IRODS_NAMESPACE
+        assert AVU("irods::a", 1).attribute == "irods::a"
+        assert AVU("irods::a", 1).without_namespace == "a"
+
+        # Even if they should have extra colons
+        assert AVU("irods:::a", 1).namespace == AVU.IRODS_NAMESPACE
+        assert AVU("irods:::a", 1).attribute == "irods:::a"
+        assert AVU("irods:::a", 1).without_namespace == ":a"
+
+        with pytest.raises(ValueError, match="did not match the declared namespace"):
+            AVU("irods::a", 1, namespace="x")
 
     @m.describe("Comparison")
     def test_compare_avus_equal(self):
@@ -792,6 +811,9 @@ class TestDataObject:
         assert obj.checksum() == "39a4aa291ca849d601e4e5b8ed627a04"
 
     @m.it("Can have its checksum verified as good")
+    @pytest.mark.skipif(
+        irods_version() <= (4, 2, 10), reason="requires iRODS server >4.2.10"
+    )
     def test_verify_checksum_good(self, simple_data_object):
         obj = DataObject(simple_data_object)
 
