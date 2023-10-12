@@ -103,11 +103,16 @@ class TestUser:
     @m.context("When a list of users is queried")
     @m.it("Is returned")
     def test_rods_users(self):
-        assert [user.name for user in rods_users()] == ["rodsadmin", "public", "irods"]
-        assert [user.name for user in rods_users(user_type="rodsgroup")] == [
-            "rodsadmin",
-            "public",
-        ]
+        # This gives different results on iRODS servers <4.3.0 and >=4.3.0
+        if irods_version() < (4, 3, 0):
+            users = ["rodsadmin", "public", "irods"]
+            groups = ["rodsadmin", "public"]
+        else:
+            users = ["public", "irods"]
+            groups = ["public"]
+
+        assert [user.name for user in rods_users()] == users
+        assert [user.name for user in rods_users(user_type="rodsgroup")] == groups
         assert [user.name for user in rods_users(user_type="rodsadmin")] == ["irods"]
         assert [user.name for user in rods_users(user_type="rodsuser")] == []
 
