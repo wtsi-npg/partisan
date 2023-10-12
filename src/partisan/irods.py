@@ -22,6 +22,7 @@ from __future__ import annotations  # Will not be needed in Python 3.10
 
 import atexit
 import json
+import re
 import subprocess
 import threading
 from abc import abstractmethod
@@ -818,10 +819,17 @@ class AVU(object):
     SEPARATOR = ":"
     """The attribute namespace separator"""
 
+    IRODS_NAMESPACE = "irods"
+
+    IRODS_SEPARATOR = "::"
+    """The attribute namespace separator used by iRODS' system AVUs"""
+
     HISTORY_SUFFIX = "_history"
     """The attribute history suffix"""
 
-    def __init__(self, attribute: Any, value: Any, units=None, namespace=None):
+    def __init__(
+        self, attribute: Any, value: Any, units: str = None, namespace: str = None
+    ):
         """Create a new AVU instance.
 
         Args:
@@ -841,14 +849,33 @@ class AVU(object):
         if namespace is None:
             namespace = ""
 
-        if namespace.find(AVU.SEPARATOR) >= 0:
+        attr = str(attribute)
+        value = str(value)
+
+        if re.match(r"\s+$", attr):
+            raise ValueError("AVU attribute may not be entirely whitespace")
+        if re.match(r"\s+$", value):
+            raise ValueError("AVU value may not be entirely whitespace")
+        if re.match(r"\s+$", namespace):
+            raise ValueError("AVU namespace may not be entirely whitespace")
+
+        # Handle iRODS' own namespaced AVUs
+        if attr.startswith(AVU.IRODS_NAMESPACE) and (
+            attr.find(AVU.IRODS_SEPARATOR) == len(AVU.IRODS_NAMESPACE)
+        ):
+            self._separator = AVU.IRODS_SEPARATOR
+        # Handle all other AVUs, namespaced or not
+        else:
+            self._separator = AVU.SEPARATOR
+
+        if namespace and namespace.find(self._separator) >= 0:
             raise ValueError(
-                f"AVU namespace contained a separator '{AVU.SEPARATOR}': '{namespace}'"
+                f"AVU namespace contained a separator '{self._separator}': "
+                f"'{namespace}'"
             )
 
-        attr = str(attribute)
-        if attr.find(AVU.SEPARATOR) >= 0:
-            ns, at = attr.split(AVU.SEPARATOR, maxsplit=1)
+        if attr.find(self._separator) >= 0:
+            ns, at = attr.split(self._separator, maxsplit=1)
             if namespace and ns != namespace:
                 raise ValueError(
                     f"AVU attribute namespace '{ns}' did not match "
@@ -859,7 +886,7 @@ class AVU(object):
 
         self._namespace = namespace
         self._attribute = attr
-        self._value = str(value)
+        self._value = value
         self._units = units
 
     @classmethod
@@ -942,9 +969,10 @@ class AVU(object):
     @property
     def attribute(self):
         """The attribute, including namespace, if any. The namespace an attribute are
-        separated by AVU.SEPARATOR."""
+        separated by AVU.SEPARATOR (or AVU.IRODS_SEPARATOR in the case of iRODS'
+        internal AVUs)."""
         if self._namespace:
-            return f"{self._namespace}{AVU.SEPARATOR}{self._attribute}"
+            return f"{self._namespace}{self._separator}{self._attribute}"
         else:
             return self.without_namespace
 
@@ -2519,20 +2547,9 @@ def as_baton(d: Dict) -> Any:
 
     # Match an AVU sub-document
     if Baton.ATTRIBUTE in d:
-        attr = str(d[Baton.ATTRIBUTE])
+        attr = d[Baton.ATTRIBUTE]
         value = d[Baton.VALUE]
         units = d.get(Baton.UNITS, None)
-
-        if attr.find(AVU.SEPARATOR) >= 0:  # Has namespace
-            (ns, _, bare_attr) = attr.partition(AVU.SEPARATOR)
-
-            # This accepts an attribute with a namespace that is the empty
-            # string i.e. ":foo" or is whitespace i.e. " :foo" and discards
-            # the namespace.
-            if not ns.strip():
-                ns = None
-
-            return AVU(bare_attr, value, units, namespace=ns)
 
         return AVU(attr, value, units)
 
