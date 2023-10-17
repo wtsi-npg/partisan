@@ -18,12 +18,10 @@ jobs:
     strategy:
       matrix:
         include:
-          # iRODS 4.2.11 clients vs 4.2.7 server
           - irods: "4.2.7"
-            client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.11:latest"
+            client_image: "ghcr.io/wtsi-npg/ub-16.04-irods-clients-4.2.7:latest"
             server_image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest"
             experimental: false
-          # iRODS 4.2.11 clients vs 4.2.11 server
           - irods: "4.2.11"
             client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.11:latest"
             server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.11:latest"
@@ -31,6 +29,10 @@ jobs:
           - irods: "4.2.12"
             client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.12:latest"
             server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.12:latest"
+            experimental: false
+          - irods: "4.3.0"
+            client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3-nightly:latest"
+            server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3-nightly:latest"
             experimental: true
 
     services:
