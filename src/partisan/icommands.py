@@ -27,7 +27,7 @@ from structlog import get_logger
 
 from partisan.exception import RodsError
 
-log = get_logger(__name__)
+log = get_logger()
 
 
 def mkgroup(name: str):

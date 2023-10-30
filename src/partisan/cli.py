@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2022 Genome Research Ltd. All rights reserved.
+# Copyright © 2022, 2023 Genome Research Ltd. All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -30,7 +30,7 @@ import partisan
 from partisan.irods import Collection, DataObject, make_rods_item, rods_path_type
 
 logging.basicConfig(level=logging.ERROR)
-log = get_logger(__name__)
+log = get_logger()
 
 
 class RodsPathType(ParamType):

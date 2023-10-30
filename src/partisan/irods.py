@@ -49,7 +49,7 @@ from partisan.exception import (
 )
 from partisan.icommands import iquest, itrim, iuserinfo
 
-log = get_logger(__name__)
+log = get_logger()
 
 """This module provides a basic API for accessing iRODS using the native
 iRODS client 'baton' (https://github.com/wtsi-npg/baton).
@@ -268,6 +268,7 @@ class Baton:
             timeout=timeout,
             tries=tries,
         )
+
         checksum = result[Baton.CHECKSUM]
         return checksum
 
