@@ -63,7 +63,10 @@ structlog.configure(
     # string) from the final processor (`JSONRenderer`) will be passed to
     # the method of the same name as that you've called on the bound logger.
     logger_factory=structlog.stdlib.LoggerFactory(),
-    # Effectively freeze configuration after creating the first bound
-    # logger.
-    cache_logger_on_first_use=True,
+    # Do not freeze configuration after creating the first bound logger. This lets
+    # the application using this library more easily configure partisans loggers.
+    #
+    # With this set to True, I was unable to change the configuration of the
+    # module-scope loggers when calling the partisan library.
+    cache_logger_on_first_use=False,
 )
