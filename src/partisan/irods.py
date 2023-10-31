@@ -268,7 +268,6 @@ class Baton:
             timeout=timeout,
             tries=tries,
         )
-
         checksum = result[Baton.CHECKSUM]
         return checksum
 
@@ -1548,7 +1547,7 @@ class RodsItem(PathLike):
             history_date = datetime.utcnow()
 
         current = self.metadata()
-        log.info("Superseding AVUs", path=self, current=current, new=avus)
+        log.debug("Superseding AVUs", path=self, old=current, new=avus)
 
         rem_attrs = set(map(lambda avu: avu.attribute, avus))
         to_remove = set(filter(lambda a: a.attribute in rem_attrs, current))
@@ -1558,7 +1557,7 @@ class RodsItem(PathLike):
         to_remove.difference_update(avus)
         to_remove = sorted(to_remove)
         if to_remove:
-            log.info("Removing AVUs", path=self, avus=to_remove)
+            log.debug("Removing AVUs", path=self, avus=to_remove)
             item = self._to_dict()
             item[Baton.AVUS] = to_remove
             with client(self.pool) as c:
@@ -1572,7 +1571,7 @@ class RodsItem(PathLike):
             to_add += hist
 
         if to_add:
-            log.info("Adding AVUs", path=self, avus=to_add)
+            log.debug("Adding AVUs", path=self, avus=to_add)
             item = self._to_dict()
             item[Baton.AVUS] = to_add
             with client(self.pool) as c:
@@ -1668,11 +1667,11 @@ class RodsItem(PathLike):
         Returns: Tuple[int, int]
         """
         current = self.acl()
-        log.info("Superseding ACL", path=self, current=current, new=acs)
+        log.debug("Superseding ACL", path=self, old=current, new=acs)
 
         to_remove = sorted(set(current).difference(acs))
         if to_remove:
-            log.info("Removing from ACL", path=self, ac=to_remove)
+            log.debug("Removing from ACL", path=self, ac=to_remove)
 
             # In iRODS we "remove" permissions by setting them to NULL
             to_null = [AC(ac.user, Permission.NULL, zone=ac.zone) for ac in to_remove]
@@ -1684,7 +1683,7 @@ class RodsItem(PathLike):
 
         to_add = sorted(set(acs).difference(current))
         if to_add:
-            log.info("Adding to ACL", path=self, ac=to_add)
+            log.debug("Adding to ACL", path=self, ac=to_add)
             item = self._to_dict()
             item[Baton.ACCESS] = to_add
             with client(self.pool) as c:
