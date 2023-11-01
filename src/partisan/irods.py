@@ -1547,7 +1547,7 @@ class RodsItem(PathLike):
             history_date = datetime.utcnow()
 
         current = self.metadata()
-        log.info("Superseding AVUs", path=self, old=current, new=avus)
+        log.info("Superseding AVUs", path=self, current=current, new=avus)
 
         rem_attrs = set(map(lambda avu: avu.attribute, avus))
         to_remove = set(filter(lambda a: a.attribute in rem_attrs, current))
@@ -1667,7 +1667,7 @@ class RodsItem(PathLike):
         Returns: Tuple[int, int]
         """
         current = self.acl()
-        log.info("Superseding ACL", path=self, old=current, new=acs)
+        log.info("Superseding ACL", path=self, current=current, new=acs)
 
         to_remove = sorted(set(current).difference(acs))
         if to_remove:
