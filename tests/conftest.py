@@ -45,7 +45,14 @@ tests_have_admin = pytest.mark.skipif(
     not have_admin(), reason="tests do not have iRODS admin access"
 )
 
-TEST_GROUPS = ["ss_study_01", "ss_study_02", "ss_study_03"]
+# The following iRODS groups manage permissions for data belonging to the corresponding
+# study.
+STUDY_GROUPS = ["ss_study_01", "ss_study_02", "ss_study_03"]
+# The following iRODS groups manage permissions for human contamination identified in
+# data belonging to the corresponding study.
+HUMAN_STUDY_GROUPS = [g + "_human" for g in STUDY_GROUPS]
+
+TEST_GROUPS = STUDY_GROUPS + HUMAN_STUDY_GROUPS
 
 TEST_SQL_STALE_REPLICATE = "setObjectReplStale"
 TEST_SQL_INVALID_CHECKSUM = "setObjectChecksumInvalid"
