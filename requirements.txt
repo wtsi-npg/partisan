@@ -1,5 +1,5 @@
 click==8.1.7
 python-dateutil==2.8.2
 setuptools==69.0.3
-setuptools_git_versioning==1.13.5
+setuptools_git_versioning==1.13.6
 structlog==24.1.0
