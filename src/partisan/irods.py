@@ -67,6 +67,7 @@ class Baton:
     ATTRIBUTE = "attribute"
     VALUE = "value"
     UNITS = "units"
+    OPERATOR = "operator"
 
     COLL = "collection"
     OBJ = "data_object"
@@ -828,7 +829,12 @@ class AVU(object):
     """The attribute history suffix"""
 
     def __init__(
-        self, attribute: Any, value: Any, units: str = None, namespace: str = None
+        self,
+        attribute: Any,
+        value: Any,
+        units: str = None,
+        namespace: str = None,
+        operator: str = None,
     ):
         """Create a new AVU instance.
 
@@ -841,6 +847,9 @@ class AVU(object):
             namespace: The namespace (prefix) to be used for the attribute. Optional,
                but if supplied, must be the same as any existing namespace on the
                attribute string.
+            operator: The operator to use if the AVU is used as a query argument.
+                Optional, defaults to '='. Must be one of the available iRODS
+                query operators. Operators are not considered when comparing AVUs.
         """
         if attribute is None:
             raise ValueError("AVU attribute may not be None")
@@ -848,6 +857,8 @@ class AVU(object):
             raise ValueError("AVU value may not be None")
         if namespace is None:
             namespace = ""
+        if operator is None:
+            operator = "="
 
         attr = str(attribute)
         value = str(value)
@@ -888,6 +899,7 @@ class AVU(object):
         self._attribute = attr
         self._value = value
         self._units = units
+        self._operator = operator
 
     @classmethod
     def collate(cls, *avus: AVU) -> Dict[str : List[AVU]]:
@@ -985,6 +997,11 @@ class AVU(object):
     def units(self):
         """The units associated with the attribute. Units may be None."""
         return self._units
+
+    @property
+    def operator(self):
+        """The operator associated with the AVU. The default is '='."""
+        return self._operator
 
     def with_namespace(self, namespace: str):
         """make a new copy of this AVU with the specified namespace.
@@ -2526,6 +2543,8 @@ class BatonJSONEncoder(json.JSONEncoder):
             enc = {Baton.ATTRIBUTE: o.attribute, Baton.VALUE: o.value}
             if o.units:
                 enc[Baton.UNITS] = o.units
+            if o.operator:
+                enc[Baton.OPERATOR] = o.operator
             return enc
 
         if isinstance(o, Permission):

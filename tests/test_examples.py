@@ -165,6 +165,18 @@ class TestExamples(object):
         # collection and data object metadata to return combined results.
         assert irods.query_metadata(AVU("experiment_id", "experiment_1")) == [obj]
 
+        # The default query operator is `=`. You can specify a different operator for
+        # each AVU used to define a query by setting its `operator` attribute in any of
+        # the query methods.
+
+        assert DataObject.query_metadata(
+            AVU("experiment_id", "experiment%", operator="like")
+        ) == [obj]
+
+        assert irods.query_metadata(
+            AVU("experiment_id", "experiment%", operator="like")
+        ) == [obj]
+
     def test_pool_examples(self, ont_gridion):
         # partisan uses a small pool (the default is 4) of BatonClient instances to
         # serve requests. This pool is created automatically and is passed to the
