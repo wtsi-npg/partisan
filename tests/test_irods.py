@@ -817,7 +817,8 @@ class TestDataObject:
 
     @m.it("Can have its checksum verified as good")
     @pytest.mark.skipif(
-        irods_version() <= (4, 2, 10), reason="requires iRODS server >4.2.10"
+        irods_version() <= (4, 2, 10),
+        reason=f"requires iRODS server >4.2.10; version is {irods_version()}",
     )
     def test_verify_checksum_good(self, simple_data_object):
         obj = DataObject(simple_data_object)
@@ -829,7 +830,8 @@ class TestDataObject:
 
     @m.it("Can have its checksum verified as bad")
     @pytest.mark.skipif(
-        irods_version() <= (4, 2, 10), reason="requires iRODS server >4.2.10"
+        irods_version() <= (4, 2, 10),
+        reason=f"requires iRODS server >4.2.10; version is {irods_version()}",
     )
     def test_verify_checksum_bad(self, invalid_checksum_data_object):
         obj = DataObject(invalid_checksum_data_object)
@@ -1118,6 +1120,10 @@ class TestReplicaManagement:
         with pytest.raises(RodsError, match="trim error"):
             obj.trim_replicas(min_replicas=0, valid=True, invalid=False)
 
+    @pytest.mark.skipif(
+        irods_version() >= (4, 3, 2),
+        reason=f"fixed in iRODS 4.3.2; version is {irods_version()}",
+    )
     @m.describe("Data objects with invalid replicas")
     @m.context("When trimming would violate the minimum replica count")
     @m.it("Still trims invalid replicas")
