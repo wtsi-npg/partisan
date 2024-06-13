@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021, 2022, 2023 Genome Research Ltd. All rights
-# reserved.
+# Copyright © 2020, 2021, 2022, 2023, 2024 Genome Research Ltd. All
+# rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -28,7 +28,7 @@ import threading
 from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum, unique
 from functools import total_ordering, wraps
 from os import PathLike
@@ -1561,18 +1561,27 @@ class RodsItem(PathLike):
         Returns: Tuple[int, int]
         """
         if history_date is None:
-            history_date = datetime.utcnow()
+            history_date = datetime.now(timezone.utc)
 
         current = self.metadata()
-        log.info("Superseding AVUs", path=self, current=current, new=avus)
 
-        rem_attrs = set(map(lambda avu: avu.attribute, avus))
-        to_remove = set(filter(lambda a: a.attribute in rem_attrs, current))
+        rem_attrs = {avu.attribute for avu in avus}
+        to_remove = {a for a in current if a.attribute in rem_attrs}
 
         # If the argument AVUs have some AVUs to remove amongst them, we don't want
         # to remove them from the item, just to add them back.
         to_remove.difference_update(avus)
         to_remove = sorted(to_remove)
+        to_add = sorted(set(avus).difference(current))
+        log.debug(
+            "Preparing AVUs",
+            path=self,
+            current=current,
+            new=[*avus],
+            add=to_add,
+            rem=to_remove,
+        )
+
         if to_remove:
             log.info("Removing AVUs", path=self, avus=to_remove)
             item = self._to_dict()
@@ -1580,7 +1589,6 @@ class RodsItem(PathLike):
             with client(self.pool) as c:
                 c.remove_metadata(item, timeout=timeout, tries=tries)
 
-        to_add = sorted(set(avus).difference(current))
         if history:
             hist = []
             for avus in AVU.collate(*to_remove).values():
@@ -1614,15 +1622,10 @@ class RodsItem(PathLike):
         """
         current = self.acl()
         to_add = sorted(set(acs).difference(current))
-        log.debug(
-            "Adding to ACL",
-            path=self,
-            curr=current,
-            arg=acs,
-            add=to_add,
-        )
+        log.debug("Preparing ACL", path=self, curr=current, arg=acs, add=to_add)
 
         if to_add:
+            log.info("Adding to ACL", path=self, ac=to_add)
             item = self._to_dict()
             item[Baton.ACCESS] = to_add
             with client(self.pool) as c:
@@ -1648,15 +1651,10 @@ class RodsItem(PathLike):
         """
         current = self.acl()
         to_remove = sorted(set(current).intersection(acs))
-        log.debug(
-            "Removing from ACL",
-            path=self,
-            curr=current,
-            arg=acs,
-            rem=to_remove,
-        )
+        log.debug("Preparing ACL", path=self, curr=current, arg=acs, rem=to_remove)
 
         if to_remove:
+            log.info("Removing from ACL", path=self, ac=to_remove)
             # In iRODS we "remove" permissions by setting them to NULL
             to_null = [AC(ac.user, Permission.NULL, zone=ac.zone) for ac in to_remove]
 
@@ -1684,12 +1682,19 @@ class RodsItem(PathLike):
         Returns: Tuple[int, int]
         """
         current = self.acl()
-        log.info("Superseding ACL", path=self, current=current, new=acs)
-
         to_remove = sorted(set(current).difference(acs))
+        to_add = sorted(set(acs).difference(current))
+        log.debug(
+            "Preparing ACL",
+            path=self,
+            current=current,
+            new=acs,
+            add=to_add,
+            rem=to_remove,
+        )
+
         if to_remove:
             log.info("Removing from ACL", path=self, ac=to_remove)
-
             # In iRODS we "remove" permissions by setting them to NULL
             to_null = [AC(ac.user, Permission.NULL, zone=ac.zone) for ac in to_remove]
 
@@ -1698,7 +1703,6 @@ class RodsItem(PathLike):
             with client(self.pool) as c:
                 c.set_permission(item, timeout=timeout, tries=tries)
 
-        to_add = sorted(set(acs).difference(current))
         if to_add:
             log.info("Adding to ACL", path=self, ac=to_add)
             item = self._to_dict()
