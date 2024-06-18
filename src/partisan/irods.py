@@ -1836,8 +1836,7 @@ class RodsItem(PathLike):
     @abstractmethod
     def rods_type(self) -> Optional[Type[RodsItem]]:
         """Return a Python type representing the kind of iRODS path supplied."""
-
-    pass
+        pass
 
     @abstractmethod
     def check_rods_type(self, **kwargs):
