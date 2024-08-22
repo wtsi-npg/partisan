@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021, 2022, 2023 Genome Research Ltd. All rights
+# Copyright © 2020, 2021, 2022, 2023, 2024 Genome Research Ltd. All rights
 # reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -18,9 +18,12 @@
 #
 # @author Keith James <kdj@sanger.ac.uk>
 
+import json
+import os
+import shlex
 import subprocess
 from io import StringIO
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from typing import List, Union
 
 from structlog import get_logger
@@ -59,6 +62,49 @@ def imkdir(remote_path: Union[PurePath, str], make_parents=True):
         cmd.append("-p")
 
     cmd.append(remote_path)
+    _run(cmd)
+
+
+def iinit():
+    password = os.environ.get("IRODS_PASSWORD")
+    if password is None or password == "":
+        log.info(
+            "Not authenticating with iRODS; no password specified by the "
+            "IRODS_PASSWORD environment variable. Assuming the user is already "
+            "authenticated."
+        )
+        return
+
+    env_val = os.environ.get("IRODS_ENVIRONMENT_FILE")
+    if env_val is None or env_val == "":
+        log.info(
+            "No iRODS environment file specified by the IRODS_ENVIRONMENT_FILE "
+            "environment variable; using the default"
+        )
+        env_path = Path("~/.irods/irods_environment.json").expanduser().as_posix()
+    else:
+        env_path = Path(env_val).resolve().as_posix()
+
+    log.info("Using iRODS environment file", env_path=env_path)
+
+    with open(env_path) as f:
+        env = json.load(f)
+        if "irods_authentication_file" not in env:
+            log.info(
+                "No iRODS authentication file specified in the environment file; "
+                "using the default"
+            )
+            auth_path = Path("~/.irods/.irodsA").expanduser().as_posix()
+        else:
+            auth_path = Path(env["irods_authentication_file"]).as_posix()
+
+    if Path(auth_path).exists():
+        log.info("Updating the existing iRODS auth file", auth_path=auth_path)
+    else:
+        log.info("Creating a new iRODS auth file", auth_path=auth_path)
+
+    password = shlex.quote(password)
+    cmd = ["/bin/sh", "-c", f"echo {password} | iinit"]
     _run(cmd)
 
 

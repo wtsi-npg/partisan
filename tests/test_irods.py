@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021, 2023 Genome Research Ltd. All rights reserved.
+# Copyright © 2020, 2021, 2023, 2024 Genome Research Ltd. All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,7 +19,7 @@
 
 import hashlib
 import os.path
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import PurePath
 
 import pytest
@@ -996,7 +996,7 @@ class TestDataObject:
         # Replace avu1, avu3 with avu4, avu5 (leaving avu2 in place)
         avu4 = AVU("abcde", "99999")
         avu5 = AVU("abcde", "00000")
-        date = datetime.utcnow()
+        date = datetime.now(timezone.utc)
         assert obj.supersede_metadata(avu4, avu5, history=True, history_date=date) == (
             2,
             3,

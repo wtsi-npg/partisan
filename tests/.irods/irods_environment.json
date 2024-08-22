@@ -2,6 +2,7 @@
     "irods_host": "irods-server",
     "irods_port": 1247,
     "irods_user_name": "irods",
+    "irods_authentication_file": "./tests/.irods/auth_file",
     "irods_zone_name": "testZone",
     "irods_home": "/testZone/home/irods",
     "irods_default_resource": "replResc",
