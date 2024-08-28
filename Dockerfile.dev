@@ -32,8 +32,6 @@ RUN echo "deb [arch=amd64] https://packages.irods.org/apt/ $(lsb_release -sc) ma
 
 WORKDIR /app
 
-COPY . /app
-
 # It's more practical to build from an iRODS client image and install recent Python
 # than to build from a recent Python image and install iRODS clients.
 ENV PYENV_ROOT="/app/.pyenv"
@@ -41,14 +39,21 @@ ENV PYENV_ROOT="/app/.pyenv"
 # Put PYENV first to ensure we use the pyenv-installed Python
 ENV PATH="${PYENV_ROOT}/shims:${PYENV_ROOT}/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"
 
-RUN ./docker/install_pyenv.sh
+COPY ./docker/install_pyenv.sh /app/docker/install_pyenv.sh
+
+RUN /app/docker/install_pyenv.sh
 
 RUN pyenv install "$PYTHON_VERSION"
 RUN pyenv global "$PYTHON_VERSION"
 
+COPY requirements.txt test-requirements.txt /app/
+
 RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r test-requirements.txt && \
-    pip install --no-cache-dir . && \
+    pip install --no-cache-dir -r test-requirements.txt
+
+COPY . /app
+
+RUN pip install --no-cache-dir . && \
     git status && \
     ls -al
 
