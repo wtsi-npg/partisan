@@ -36,6 +36,7 @@ repository = "https://github.com/wtsi-npg/partisan.git"
 
 [build-system]
 requires = ["setuptools>=41", "wheel", "setuptools-git-versioning>=2.0,<3"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 # Note: we are relying on setuptools' automatic package discovery, so no further
