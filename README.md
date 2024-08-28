@@ -272,77 +272,34 @@ distinguish between these circumstances.
 
 These tools should be present on the `PATH`, when required.
 
-## Testing with Docker
+## Running tests
 
-An iRODS server and clients are available as Docker images which may be used
-with Docker Compose to set up a standard test environment. The test 
-environment consists of an `irods-server` container and an `irods-clients` 
-container.
+### Running directly on your local machine
 
-Before running the tests, start the containers and supporting network:
+To run the tests locally, you will need to have the `irods` clients installed (`icommands`
+and `baton`, which means your local machine must be either be running Linux, or have
+containerised versions of these tools installed and runnable via proxy wrappers of the
+same name, to emulate the Linux environment.
 
-```commandline
-    docker-compose up -d
-```
+You will also need to have a working iRODS server to connect to.
 
-The environment variables `IRODS_VERSION` (defaults to `4.2.11`) and 
-`DOCKER_TAG` (defaults to `latest`) may be used to choose particular 
-Docker images.
+With this in place, you can run the tests with the following command:
 
+    pytest --it 
 
-```commandline
-    IRODS_VERSION="4.2.11" DOCKER_TAG="latest" docker-compose up -d
-```
+### Running in a container
 
-The `./tests/bin` directory contains a universal iRODS proxy script to be used
-instead of native iRODS clients. It forwards any client operations to the 
-real iRODS clients inside the `irods-clients` container. This directory 
-should be on your `PATH` while running the tests. The iRODS authentication 
-file can then be created using `iinit`: 
+The tests can be run in a container, which requires less setup and will be less likely
+to be affected by your local environment. A Docker Composer file is provided to run the
+tests in a Linux container, against a containerised iRODS server.
 
-```commandline
-    export PATH="${PWD}/tests/bin:$PATH"
-    iinit
-```
+To run the tests in a container, you will need to have Docker installed.
 
-The tests should be run in the root of the repository, with `tmp` redirected 
-to a destination in a shared volume:
+With this in place, you can run the tests with the following command:
 
-```commandline
-    pytest --basetemp=./tests/tmp
-```
+    docker-compose run app pytest --it
 
-Finally, to destroy the test containers and network:
+There will be a delay the first time this is run because the Docker image will be built.
+To pre-build the image, you can run:
 
-````commandline
-     docker-compose down
-````
-
-
-### Test troubleshooting
-
-When starting the containers, you may see an error similar to:
-
-```
-    invalid interpolation format for services.irods-clients.environment.CLIENT_USER_ID:
-    "required variable UID is missing a value:  \nERROR: The UID environment 
-    variable is unset". You may need to escape any $ with another $
-```
-
-which is caused by the `UID` shell variable being unset or not exported. See
-this [Docker Compose issue](https://github.com/docker/compose/issues/2380) for
-more details.
-
-
-You can work around this by exporting the relevant variable(s):
-
-```commandline
-    export UID
-    docker-compose up -d
-```
-
-or:
-
-```commandline
-    UID=$(id -u) docker-compose up -d
-```
+    docker-compose build

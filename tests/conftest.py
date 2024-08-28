@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021, 2023 Genome Research Ltd. All rights reserved.
+# Copyright © 2020, 2021, 2023, 2024 Genome Research Ltd. All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@ import pytest
 from partisan.icommands import (
     add_specific_sql,
     have_admin,
+    iinit,
     imkdir,
     iput,
     iquest,

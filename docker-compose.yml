@@ -1,23 +1,31 @@
+
 services:
   irods-server:
+    platform: linux/amd64
     container_name: irods-server
-    image: "ghcr.io/wtsi-npg/ub-18.04-irods-${IRODS_VERSION:-4.2.11}:${DOCKER_TAG:-latest}"
-    restart: always
+    image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest"
     ports:
-      - "1247:1247"
-      - "20000-20199:20000-20199"
+      - "127.0.0.1:1247:1247"
+      - "127.0.0.1:20000-20199:20000-20199"
+    restart: always
+    healthcheck:
+      test: ["CMD", "nc", "-z", "-v", "localhost", "1247"]
+      start_period: 30s
+      interval: 5s
+      timeout: 10s
+      retries: 12
 
-  irods-clients:
-    container_name: irods-clients
-    image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-${IRODS_VERSION:-4.2.11}:${DOCKER_TAG:-latest}"
+  app:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: always
     volumes:
-      - "${PWD}:${PWD}"
-      - "${PWD}/tests/.irods:${HOME}/.irods/"
+      - "./tests/.irods:/home/appuser/.irods/"
     environment:
-      CLIENT_USER: "${USER:? ERROR: The USER environment variable is unset}"
-      CLIENT_USER_ID: "${UID:? ERROR: The UID environment variable is unset}"
-      CLIENT_USER_HOME: "${HOME}"
-      IRODS_ENVIRONMENT_FILE: "${HOME}/.irods/irods_environment.json"
-    command: sleep infinity
+      IRODS_ENVIRONMENT_FILE: "/home/appuser/.irods/irods_environment.json"
+      IRODS_PASSWORD: "irods"
     depends_on:
-      - irods-server
+      irods-server:
+        condition: service_healthy
