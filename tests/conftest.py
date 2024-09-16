@@ -31,7 +31,6 @@ import pytest
 from partisan.icommands import (
     add_specific_sql,
     have_admin,
-    iinit,
     imkdir,
     iput,
     iquest,
@@ -188,6 +187,22 @@ def simple_data_object(tmp_path):
 
     obj_path = rods_path / "lorem.txt"
     iput("./tests/data/simple/data_object/lorem.txt", obj_path)
+
+    try:
+        yield obj_path
+    finally:
+        irm(root_path, force=True, recurse=True)
+
+
+@pytest.fixture(scope="function")
+def empty_data_object(tmp_path):
+    """A fixture providing a collection containing a single data object containing
+    no data."""
+    root_path = PurePath("/testZone/home/irods/test")
+    rods_path = add_rods_path(root_path, tmp_path)
+
+    obj_path = rods_path / "empty.txt"
+    iput("./tests/data/simple/data_object/empty.txt", obj_path)
 
     try:
         yield obj_path

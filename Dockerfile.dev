@@ -17,6 +17,7 @@ RUN apt-get update && \
     git \
     make \
     libbz2-dev \
+    libffi-dev \
     libncurses-dev \
     libreadline-dev \
     libssl-dev \
@@ -42,6 +43,8 @@ ENV PATH="${PYENV_ROOT}/shims:${PYENV_ROOT}/bin:/bin:/sbin:/usr/bin:/usr/sbin:/u
 COPY ./docker/install_pyenv.sh /app/docker/install_pyenv.sh
 
 RUN /app/docker/install_pyenv.sh
+
+ENV MAKE_OPTS="-j 8"
 
 RUN pyenv install "$PYTHON_VERSION"
 RUN pyenv global "$PYTHON_VERSION"

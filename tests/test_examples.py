@@ -117,7 +117,7 @@ class TestExamples(object):
         # is the expected size and matches the expected checksum.
 
         local_path = Path(tmp_path, obj.name)
-        obj.get(local_path)
+        obj.get(local_path, verify_checksum=True)
 
         with open(local_path, "rb") as f:
             m = hashlib.md5()

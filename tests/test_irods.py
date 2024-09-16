@@ -20,7 +20,7 @@
 import hashlib
 import os.path
 from datetime import datetime, timezone
-from pathlib import PurePath
+from pathlib import Path, PurePath
 
 import pytest
 from pytest import mark as m
@@ -737,6 +737,44 @@ class TestCollection:
         for item in coll.contents(recurse=True):
             assert item.acl() == new_acl, "Collection content ACL updated"
 
+    @m.context("When a Collection does not exist")
+    @m.it("When put non-recursively")
+    @m.it("Is created, with its immediate contents")
+    def test_put_collection(self, simple_collection):
+        coll = Collection(simple_collection / "sub")
+        assert not coll.exists()
+
+        local_path = Path("./tests/data/simple").absolute()
+        coll.put(local_path, recurse=False)
+        assert coll.exists()
+        assert coll.contents() == [Collection(coll.path / "data_object")]
+
+    @m.context("When a Collection does not exist")
+    @m.it("When put recursively")
+    @m.it("Is created, with descendants and their contents")
+    def test_put_collection_recur(self, simple_collection):
+        coll = Collection(simple_collection / "sub")
+        assert not coll.exists()
+
+        local_path = Path("./tests/data/simple").absolute()
+        coll.put(local_path, recurse=True, verify_checksum=True)
+        assert coll.exists()
+
+        sub = Collection(coll.path / "data_object")
+        empty = DataObject(sub.path / "empty.txt")
+        lorem = DataObject(sub.path / "lorem.txt")
+        utf8 = DataObject(sub.path / "utf-8.txt")
+
+        assert coll.contents() == [sub]
+        assert sub.contents() == [empty, lorem, utf8]
+
+        assert empty.size() == 0
+        assert empty.checksum() == "d41d8cd98f00b204e9800998ecf8427e"
+        assert lorem.size() == 555
+        assert lorem.checksum() == "39a4aa291ca849d601e4e5b8ed627a04"
+        assert utf8.size() == 2522
+        assert utf8.checksum() == "500cec3fbb274064e2a25fa17a69638a"
+
 
 @m.describe("DataObject")
 class TestDataObject:
@@ -768,6 +806,30 @@ class TestDataObject:
         with pytest.raises(BatonError, match="Invalid iRODS path"):
             DataObject(p).exists()
 
+    @m.describe("Putting new data objects")
+    @m.context("When a DataObject does not exist")
+    @m.it("Can be put from a local file without checksum creation")
+    def test_data_object_put_no_checksum(self, simple_collection):
+        obj = DataObject(simple_collection / "new.txt")
+        assert not obj.exists()
+
+        local_path = Path("./tests/data/simple/data_object/lorem.txt").absolute()
+        obj.put(local_path, calculate_checksum=False, verify_checksum=False)
+        assert obj.exists()
+        assert obj.size() == 555
+        assert obj.checksum() is None
+
+    @m.it("Can be put from a local file with checksum creation")
+    def test_data_object_put_checksum_no_verify(self, simple_collection):
+        obj = DataObject(simple_collection / "new.txt")
+        assert not obj.exists()
+
+        local_path = Path("./tests/data/simple/data_object/lorem.txt").absolute()
+        obj.put(local_path, calculate_checksum=True, verify_checksum=False)
+        assert obj.exists()
+        assert obj.size() == 555
+        assert obj.checksum() == "39a4aa291ca849d601e4e5b8ed627a04"
+
     @m.describe("Operations on an existing DataObject")
     @m.context("When a DataObject exists")
     @m.it("Can be detected")
@@ -789,7 +851,7 @@ class TestDataObject:
         obj = DataObject(simple_data_object)
 
         local_path = tmp_path / simple_data_object.name
-        size = obj.get(local_path)
+        size = obj.get(local_path, verify_checksum=True)
         assert size == 555
 
         md5 = hashlib.md5(open(local_path, "rb").read()).hexdigest()
@@ -810,6 +872,36 @@ class TestDataObject:
         assert obj.size() == 555
         assert len(obj.read()) == 555
 
+    @m.it("Can have its checksum and size consistency verified")
+    def test_verify_data_object_consistency(self, simple_collection):
+        obj = DataObject(simple_collection / "new.txt")
+        obj.put(
+            Path("./tests/data/simple/data_object/lorem.txt"),
+            calculate_checksum=False,
+            verify_checksum=False,
+        )
+        assert obj.size() == 555
+        assert obj.checksum() is None
+        assert obj.is_consistent_size()
+        chk = obj.checksum(calculate_checksum=True)
+        assert obj.checksum() == chk
+        assert chk == "39a4aa291ca849d601e4e5b8ed627a04"
+        assert obj.is_consistent_size()
+
+        empty = DataObject(simple_collection / "empty.txt")
+        empty.put(
+            Path("./tests/data/simple/data_object/empty.txt"),
+            calculate_checksum=False,
+            verify_checksum=False,
+        )
+        assert empty.size() == 0
+        assert empty.checksum() is None
+        assert empty.is_consistent_size()
+        chk = empty.checksum(calculate_checksum=True)
+        assert empty.checksum() == chk
+        assert chk == "d41d8cd98f00b204e9800998ecf8427e"  # Checksum of an empty file
+        assert empty.is_consistent_size()
+
     @m.it("Has a checksum")
     def test_get_checksum(self, simple_data_object):
         obj = DataObject(simple_data_object)
@@ -824,7 +916,7 @@ class TestDataObject:
         obj = DataObject(simple_data_object)
 
         # Note that in iRODS >= 4.2.10, this always passes, even if the remote file
-        # is the wrong size of has a mismatching checksum, because of this iRODS bug:
+        # is the wrong size or has a mismatching checksum, because of this iRODS bug:
         # https://github.com/irods/irods/issues/5843
         assert obj.checksum(verify_checksum=True)
 
@@ -836,6 +928,26 @@ class TestDataObject:
     def test_verify_checksum_bad(self, invalid_checksum_data_object):
         obj = DataObject(invalid_checksum_data_object)
 
+        with pytest.raises(RodsError, match="checksum") as e:
+            obj.checksum(verify_checksum=True)
+        assert e.value.code == -407000  # CHECK_VERIFICATION_RESULTS
+
+    @m.it("Fails checksum verification if it has no checksum")
+    @pytest.mark.skipif(
+        irods_version() <= (4, 2, 10),
+        reason=f"requires iRODS server >4.2.10; version is {irods_version()}",
+    )
+    def test_verify_checksum_missing(self, simple_collection):
+        obj = DataObject(simple_collection / "new.txt")
+        obj.put(
+            Path("./tests/data/simple/data_object/lorem.txt"),
+            calculate_checksum=False,
+            verify_checksum=False,
+        )
+
+        assert obj.size() == 555
+        assert obj.checksum() is None
+        assert obj.is_consistent_size()
         with pytest.raises(RodsError, match="checksum") as e:
             obj.checksum(verify_checksum=True)
         assert e.value.code == -407000  # CHECK_VERIFICATION_RESULTS
