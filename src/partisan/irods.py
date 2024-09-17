@@ -2194,7 +2194,7 @@ class DataObject(RodsItem):
                 against the remote checksum calculated by the iRODS server for data
                 objects.
             local_checksum: A caller-supplied checksum of the local file. This may be a
-                string, a path to a file containing a string, or a file name
+                string, a path to a file containing a string, or a file path
                 transformation function. If the latter, it must accept the local path as
                 its only argument and return a string checksum. Typically, this is
                 useful when this checksum is available from an earlier process that
@@ -2239,9 +2239,9 @@ class DataObject(RodsItem):
             else:
                 raise ValueError(
                     f"Invalid type for local_checksum: {type(local_checksum)}; must be "
-                    "a string or a path of a file containing a string"
+                    "a string, a path of a file containing a string, or a callable "
+                    "taking a path of a file and returning a string"
                 )
-
             if fill and self.exists() and self.checksum() == chk:
                 log.info(
                     "Data object already exists in iRODS with matching checksum; skipping",
@@ -2656,6 +2656,7 @@ class Collection(RodsItem):
         recurse=False,
         calculate_checksum=False,
         verify_checksum=False,
+        local_checksum=None,
         compare_checksums=False,
         fill=False,
         force=True,
@@ -2673,6 +2674,12 @@ class Collection(RodsItem):
             verify_checksum: Verify the local checksum calculated by the iRODS C API
                 against the remote checksum calculated by the iRODS server for data
                 objects. See DataObject.put() for more information.
+            local_checksum: A callable that returns a checksum for a local file. See
+                DataObject.put() for more information. This is called for each file in
+                encountered while recursing, with the file path as its argument.
+                (Also accepts a string or a path to a file containing a string, as does
+                DataObject.put(), however this is not useful for collections except in
+                the edge where all the files have identical contents).
             compare_checksums: Compare caller-supplied local checksums to the remote
                 checksums calculated by the iRODS server after the put operation for
                 data objects. If the checksums do not match, raise an error. See
@@ -2707,6 +2714,7 @@ class Collection(RodsItem):
                         p,
                         calculate_checksum=calculate_checksum,
                         verify_checksum=verify_checksum,
+                        local_checksum=local_checksum,
                         compare_checksums=compare_checksums,
                         fill=fill,
                         force=force,
@@ -2726,6 +2734,7 @@ class Collection(RodsItem):
                         p,
                         calculate_checksum=calculate_checksum,
                         verify_checksum=verify_checksum,
+                        local_checksum=local_checksum,
                         compare_checksums=compare_checksums,
                         force=force,
                         timeout=timeout,

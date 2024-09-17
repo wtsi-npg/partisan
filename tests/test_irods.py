@@ -830,6 +830,73 @@ class TestDataObject:
         assert obj.size() == 555
         assert obj.checksum() == "39a4aa291ca849d601e4e5b8ed627a04"
 
+    @m.it("Can put put from a local file with checksum calculated on the fly")
+    def test_data_object_put_checksum_supplied(self, simple_collection):
+        obj = DataObject(simple_collection / "new.txt")
+        assert not obj.exists()
+
+        local_path = Path("./tests/data/simple/data_object/lorem.txt").absolute()
+        checksum = "39a4aa291ca849d601e4e5b8ed627a04"
+
+        obj.put(local_path, calculate_checksum=True, compare_checksums=True)
+        assert obj.exists()
+        assert obj.checksum() == checksum
+
+    @m.it("Can put put from a local file with a supplied local checksum string")
+    def test_data_object_put_checksum_supplied(self, simple_collection):
+        obj = DataObject(simple_collection / "new.txt")
+        assert not obj.exists()
+
+        local_path = Path("./tests/data/simple/data_object/lorem.txt").absolute()
+        checksum = "39a4aa291ca849d601e4e5b8ed627a04"
+        obj.put(
+            local_path,
+            calculate_checksum=True,
+            compare_checksums=True,
+            local_checksum=checksum,
+        )
+        assert obj.exists()
+        assert obj.checksum() == checksum
+
+    @m.it("Can put put from a local file with a supplied local checksum callable")
+    def test_data_object_put_callable_supplied(self, simple_collection):
+        obj = DataObject(simple_collection / "new.txt")
+        assert not obj.exists()
+
+        local_path = Path("./tests/data/simple/data_object/lorem.txt").absolute()
+        checksum = "39a4aa291ca849d601e4e5b8ed627a04"
+        obj.put(
+            local_path,
+            calculate_checksum=True,
+            compare_checksums=True,
+            local_checksum=lambda _: checksum,
+        )
+        assert obj.exists()
+        assert obj.checksum() == checksum
+
+    @m.it("Raises an error if a supplied local checksum callable does not match")
+    def test_data_object_put_callable_supplied(self, simple_collection):
+        obj = DataObject(simple_collection / "new.txt")
+        assert not obj.exists()
+
+        local_path = Path("./tests/data/simple/data_object/lorem.txt").absolute()
+        with pytest.raises(ValueError, match="mismatch"):
+            obj.put(
+                local_path,
+                calculate_checksum=True,
+                compare_checksums=True,
+                local_checksum=lambda _: "a bad checksum",
+            )
+
+    @m.it("Raises an error if a supplied local checksum string does not match")
+    def test_data_object_put_checksum_supplied_mismatch(self, simple_collection):
+        obj = DataObject(simple_collection / "new.txt")
+        assert not obj.exists()
+
+        local_path = Path("./tests/data/simple/data_object/lorem.txt").absolute()
+        with pytest.raises(ValueError, match="mismatch"):
+            obj.put(local_path, compare_checksums=True, local_checksum="a bad checksum")
+
     @m.describe("Operations on an existing DataObject")
     @m.context("When a DataObject exists")
     @m.it("Can be detected")
