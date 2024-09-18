@@ -2704,12 +2704,12 @@ class Collection(RodsItem):
                 for d in dirs:
                     p = Path(root, d)
                     r = PurePath(self.path, p.relative_to(local_path))
-                    log.debug(f"Creating collection", local_path=d, remote_path=r)
+                    log.debug("Creating collection", local_path=d, remote_path=r)
                     Collection(r).create(exist_ok=True, timeout=timeout)
                 for f in files:
                     p = Path(root, f)
                     r = PurePath(self.path, p.relative_to(local_path))
-                    log.debug(f"Putting data object", local_path=p, remote_path=r)
+                    log.debug("Putting data object", local_path=p, remote_path=r)
                     DataObject(r).put(
                         p,
                         calculate_checksum=calculate_checksum,
@@ -2725,11 +2725,11 @@ class Collection(RodsItem):
             for p in Path(local_path).iterdir():
                 if p.is_dir():
                     r = PurePath(self.path, p.relative_to(local_path))
-                    log.debug(f"Creating collection", local_path=p, remote_path=r)
+                    log.debug("Creating collection", local_path=p, remote_path=r)
                     Collection(r).create(exist_ok=True, timeout=timeout)
                 else:
                     r = PurePath(self.path, p.name)
-                    log.debug(f"Putting data object", local_path=p, remote_path=r)
+                    log.debug("Putting data object", local_path=p, remote_path=r)
                     DataObject(r).put(
                         p,
                         calculate_checksum=calculate_checksum,
