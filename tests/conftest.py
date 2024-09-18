@@ -30,8 +30,8 @@ import pytest
 
 from partisan.icommands import (
     add_specific_sql,
+    group_exists,
     have_admin,
-    iinit,
     imkdir,
     iput,
     iquest,
@@ -62,13 +62,15 @@ TEST_SQL_INVALID_CHECKSUM = "setObjectChecksumInvalid"
 def add_test_groups():
     if have_admin():
         for g in TEST_GROUPS:
-            mkgroup(g)
+            if not group_exists(g):
+                mkgroup(g)
 
 
 def remove_test_groups():
     if have_admin():
         for g in TEST_GROUPS:
-            rmgroup(g)
+            if group_exists(g):
+                rmgroup(g)
 
 
 def add_sql_test_utilities():
@@ -188,6 +190,22 @@ def simple_data_object(tmp_path):
 
     obj_path = rods_path / "lorem.txt"
     iput("./tests/data/simple/data_object/lorem.txt", obj_path)
+
+    try:
+        yield obj_path
+    finally:
+        irm(root_path, force=True, recurse=True)
+
+
+@pytest.fixture(scope="function")
+def empty_data_object(tmp_path):
+    """A fixture providing a collection containing a single data object containing
+    no data."""
+    root_path = PurePath("/testZone/home/irods/test")
+    rods_path = add_rods_path(root_path, tmp_path)
+
+    obj_path = rods_path / "empty.txt"
+    iput("./tests/data/simple/data_object/empty.txt", obj_path)
 
     try:
         yield obj_path

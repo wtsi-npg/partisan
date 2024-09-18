@@ -20,6 +20,7 @@
 
 import json
 import os
+import re
 import shlex
 import subprocess
 from io import StringIO
@@ -41,6 +42,18 @@ def mkgroup(name: str):
 def rmgroup(name: str):
     cmd = ["iadmin", "rmgroup", name]
     _run(cmd)
+
+
+def group_exists(name: str) -> bool:
+    info = iuserinfo(name)
+    for line in info.splitlines():
+        log.debug("Checking line", line=line)
+        if re.match(r"type:\s+rodsgroup", line):
+            log.debug("Group check", exists=True, name=name)
+            return True
+
+    log.debug("Group check", exists=False, name=name)
+    return False
 
 
 def iuserinfo(name: str = None) -> str:

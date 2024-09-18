@@ -3,7 +3,7 @@ services:
   irods-server:
     platform: linux/amd64
     container_name: irods-server
-    image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest"
+    image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.11:latest"
     ports:
       - "127.0.0.1:1247:1247"
       - "127.0.0.1:20000-20199:20000-20199"
@@ -26,6 +26,7 @@ services:
     environment:
       IRODS_ENVIRONMENT_FILE: "/home/appuser/.irods/irods_environment.json"
       IRODS_PASSWORD: "irods"
+      IRODS_VERSION: "4.2.11"
     depends_on:
       irods-server:
         condition: service_healthy
