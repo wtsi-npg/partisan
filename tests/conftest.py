@@ -30,6 +30,7 @@ import pytest
 
 from partisan.icommands import (
     add_specific_sql,
+    group_exists,
     have_admin,
     imkdir,
     iput,
@@ -61,13 +62,15 @@ TEST_SQL_INVALID_CHECKSUM = "setObjectChecksumInvalid"
 def add_test_groups():
     if have_admin():
         for g in TEST_GROUPS:
-            mkgroup(g)
+            if not group_exists(g):
+                mkgroup(g)
 
 
 def remove_test_groups():
     if have_admin():
         for g in TEST_GROUPS:
-            rmgroup(g)
+            if group_exists(g):
+                rmgroup(g)
 
 
 def add_sql_test_utilities():
