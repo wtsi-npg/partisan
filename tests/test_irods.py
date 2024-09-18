@@ -744,10 +744,10 @@ class TestCollection:
         coll = Collection(simple_collection / "sub")
         assert not coll.exists()
 
-        local_path = Path("./tests/data/simple").absolute()
+        local_path = Path("./tests/data/simple/collection").absolute()
         coll.put(local_path, recurse=False)
         assert coll.exists()
-        assert coll.contents() == [Collection(coll.path / "data_object")]
+        assert coll.contents() == [Collection(coll.path / "empty")]
 
     @m.context("When a Collection does not exist")
     @m.it("When put recursively")
@@ -760,16 +760,20 @@ class TestCollection:
         coll.put(local_path, recurse=True, verify_checksum=True)
         assert coll.exists()
 
-        sub = Collection(coll.path / "data_object")
-        empty = DataObject(sub.path / "empty.txt")
-        lorem = DataObject(sub.path / "lorem.txt")
-        utf8 = DataObject(sub.path / "utf-8.txt")
+        sub1 = Collection(coll.path / "collection")
+        sub2 = Collection(coll.path / "data_object")
+        assert coll.contents() == [sub1, sub2]
 
-        assert coll.contents() == [sub]
-        assert sub.contents() == [empty, lorem, utf8]
+        empty_coll = Collection(sub1.path / "empty")
+        assert sub1.contents() == [empty_coll]
 
-        assert empty.size() == 0
-        assert empty.checksum() == "d41d8cd98f00b204e9800998ecf8427e"
+        empty_obj = DataObject(sub2.path / "empty.txt")
+        lorem = DataObject(sub2.path / "lorem.txt")
+        utf8 = DataObject(sub2.path / "utf-8.txt")
+        assert sub2.contents() == [empty_obj, lorem, utf8]
+
+        assert empty_obj.size() == 0
+        assert empty_obj.checksum() == "d41d8cd98f00b204e9800998ecf8427e"
         assert lorem.size() == 555
         assert lorem.checksum() == "39a4aa291ca849d601e4e5b8ed627a04"
         assert utf8.size() == 2522
@@ -830,7 +834,7 @@ class TestDataObject:
         assert obj.size() == 555
         assert obj.checksum() == "39a4aa291ca849d601e4e5b8ed627a04"
 
-    @m.it("Can put put from a local file with checksum calculated on the fly")
+    @m.it("Can be put from a local file with checksum calculated on the fly")
     def test_data_object_put_checksum_supplied(self, simple_collection):
         obj = DataObject(simple_collection / "new.txt")
         assert not obj.exists()
@@ -842,7 +846,7 @@ class TestDataObject:
         assert obj.exists()
         assert obj.checksum() == checksum
 
-    @m.it("Can put put from a local file with a supplied local checksum string")
+    @m.it("Can be put from a local file with a supplied local checksum string")
     def test_data_object_put_checksum_supplied(self, simple_collection):
         obj = DataObject(simple_collection / "new.txt")
         assert not obj.exists()
@@ -858,7 +862,7 @@ class TestDataObject:
         assert obj.exists()
         assert obj.checksum() == checksum
 
-    @m.it("Can put put from a local file with a supplied local checksum callable")
+    @m.it("Can be put from a local file with a supplied local checksum callable")
     def test_data_object_put_callable_supplied(self, simple_collection):
         obj = DataObject(simple_collection / "new.txt")
         assert not obj.exists()
