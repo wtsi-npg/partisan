@@ -61,9 +61,10 @@ class TestBatonClient(object):
         assert c.is_running()
         pid = c.pid()
 
-        c.list({Baton.COLL: simple_collection})
-        c.list({Baton.COLL: simple_collection})
-        c.list({Baton.COLL: simple_collection})
+        arg = {Baton.COLL: simple_collection.as_posix()}
+        assert c.list(arg) == [arg]
+        assert c.list(arg) == [arg]
+        assert c.list(arg) == [arg]
 
         assert c.is_running()
         assert c.pid() == pid

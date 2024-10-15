@@ -1488,8 +1488,9 @@ class TestJSON:
         assert coll2.acl() == coll1.acl()
 
     @m.it("Can serialize a data object to JSON")
-    def test_data_object_json_serlialize(self, simple_data_object):
+    def test_data_object_json_serialize(self, simple_data_object):
         obj = DataObject(simple_data_object)
+        assert obj.connected()
         obj.add_metadata(AVU("a", 1), AVU("b", 2), AVU("c", 3))
 
         kwargs = {"indent": None, "sort_keys": True}
@@ -1514,15 +1515,34 @@ class TestJSON:
 
     @m.it("Can deserialize a data object from JSON")
     def test_data_object_json_deserialize(self, simple_data_object):
-        obj1 = DataObject(simple_data_object)
-        obj1.add_metadata(AVU("a", 1), AVU("b", 2), AVU("c", 3))
+        metadata = [AVU("a", 1), AVU("b", 2), AVU("c", 3)]
+        acl = [
+            AC("hello", Permission.WRITE, zone="testZone"),
+            AC("irods", Permission.OWN, zone="testZone"),
+            AC("public", Permission.READ, zone="testZone"),
+        ]
+
+        obj1 = DataObject(simple_data_object, pool=None)
+
+        assert not obj1.connected()
+        with pytest.raises(BatonError, match="operation 'checksum'"):
+            obj1.checksum()
+        with pytest.raises(BatonError, match="operation 'size'"):
+            obj1.size()
+
+        obj1.add_metadata(*metadata)
+        obj1.add_permissions(*acl)
 
         json_str = obj1.to_json(indent=None, sort_keys=True)
-
         obj2 = DataObject.from_json(json_str)
+
+        assert not obj2.connected()
+        with pytest.raises(BatonError, match="operation 'checksum'"):
+            obj2.checksum()
+        with pytest.raises(BatonError, match="operation 'size'"):
+            obj2.size()
+
         assert obj2.path == obj1.path
         assert obj2.name == obj1.name
-        assert obj2.metadata() == obj1.metadata()
-        assert obj2.acl() == obj1.acl()
-        assert obj2.size() == obj1.size()
-        assert obj2.checksum() == obj1.checksum()
+        assert obj2.metadata() == metadata
+        assert obj2.acl() == acl
