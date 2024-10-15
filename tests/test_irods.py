@@ -18,6 +18,7 @@
 # @author Keith James <kdj@sanger.ac.uk>
 
 import hashlib
+import json
 import os.path
 from datetime import datetime, timezone
 from pathlib import Path, PurePath
@@ -30,6 +31,7 @@ from partisan.exception import BatonError, RodsError
 from partisan.irods import (
     AC,
     AVU,
+    Baton,
     Collection,
     DataObject,
     Permission,
@@ -1448,3 +1450,79 @@ class TestSpecialPath:
         coll = Collection(special_paths)
         observed = [str(x) for x in coll.contents(recurse=True)]
         assert observed == expected
+
+
+@m.describe("JSON serialization")
+class TestJSON:
+    @m.it("Can serialize a collection to JSON")
+    def test_collection_json_serialize(self, simple_collection):
+        coll = Collection(simple_collection)
+        coll.add_metadata(AVU("a", 1), AVU("b", 2), AVU("c", 3))
+
+        kwargs = {"indent": None, "sort_keys": True}
+
+        assert coll.to_json(**kwargs) == json.dumps(
+            {
+                Baton.COLL: coll.path.as_posix(),
+                Baton.AVUS: [
+                    {Baton.ATTRIBUTE: "a", Baton.VALUE: "1"},
+                    {Baton.ATTRIBUTE: "b", Baton.VALUE: "2"},
+                    {Baton.ATTRIBUTE: "c", Baton.VALUE: "3"},
+                ],
+                Baton.ACCESS: [
+                    {Baton.OWNER: "irods", Baton.ZONE: "testZone", Baton.LEVEL: "own"}
+                ],
+            },
+            **kwargs,
+        )
+
+    def test_collection_json_deserialize(self, simple_collection):
+        coll1 = Collection(simple_collection)
+        coll1.add_metadata(AVU("a", 1), AVU("b", 2), AVU("c", 3))
+
+        json_str = coll1.to_json(indent=None, sort_keys=True)
+
+        coll2 = Collection.from_json(json_str)
+        assert coll2.path == coll1.path
+        assert coll2.metadata() == coll1.metadata()
+        assert coll2.acl() == coll1.acl()
+
+    @m.it("Can serialize a data object to JSON")
+    def test_data_object_json_serlialize(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+        obj.add_metadata(AVU("a", 1), AVU("b", 2), AVU("c", 3))
+
+        kwargs = {"indent": None, "sort_keys": True}
+
+        assert obj.to_json(**kwargs) == json.dumps(
+            {
+                Baton.COLL: obj.path.as_posix(),
+                Baton.OBJ: obj.name,
+                Baton.AVUS: [
+                    {Baton.ATTRIBUTE: "a", Baton.VALUE: "1"},
+                    {Baton.ATTRIBUTE: "b", Baton.VALUE: "2"},
+                    {Baton.ATTRIBUTE: "c", Baton.VALUE: "3"},
+                ],
+                Baton.ACCESS: [
+                    {Baton.OWNER: "irods", Baton.ZONE: "testZone", Baton.LEVEL: "own"}
+                ],
+                Baton.SIZE: 555,
+                Baton.CHECKSUM: "39a4aa291ca849d601e4e5b8ed627a04",
+            },
+            **kwargs,
+        )
+
+    @m.it("Can deserialize a data object from JSON")
+    def test_data_object_json_deserialize(self, simple_data_object):
+        obj1 = DataObject(simple_data_object)
+        obj1.add_metadata(AVU("a", 1), AVU("b", 2), AVU("c", 3))
+
+        json_str = obj1.to_json(indent=None, sort_keys=True)
+
+        obj2 = DataObject.from_json(json_str)
+        assert obj2.path == obj1.path
+        assert obj2.name == obj1.name
+        assert obj2.metadata() == obj1.metadata()
+        assert obj2.acl() == obj1.acl()
+        assert obj2.size() == obj1.size()
+        assert obj2.checksum() == obj1.checksum()
