@@ -5,47 +5,48 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.experimental }} # Experimental builds may fail
+    continue-on-error: ${{ matrix.irods.experimental }} # Experimental builds may fail
 
     defaults:
       run:
         shell: bash -l -e -o pipefail {0}
 
     env:
-      PYTHON_VERSION: "3.10"
       SINGULARITY_VERSION: "3.11.1"
 
     strategy:
       matrix:
-        include:
-          - irods: "4.2.7"
-            client_image: "ghcr.io/wtsi-npg/ub-16.04-irods-clients-4.2.7:latest"
-            server_image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest"
-            experimental: false
-          - irods: "4.2.11"
-            client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.11:latest"
-            server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.11:latest"
-            experimental: false
-          - irods: "4.2.12"
-            client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.12:latest"
-            server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.12:latest"
-            experimental: false
-          - irods: "4.3.1"
-            client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.1:latest"
-            server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.1:latest"
-            experimental: false
-          - irods: "4.3.2"
-            client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.2:latest"
-            server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.2:latest"
-            experimental: true
-          - irods: "4.3.3"
-            client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.3:latest"
-            server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.3:latest"
-            experimental: true
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        irods: [
+          {version: "4.2.7",
+           client_image: "ghcr.io/wtsi-npg/ub-16.04-irods-clients-4.2.7:latest",
+           server_image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest",
+           experimental: false},
+          {version: "4.2.11",
+           client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.11:latest",
+           server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.11:latest",
+           experimental: false},
+          {version: "4.2.12",
+           client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.12:latest",
+           server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.12:latest",
+           experimental: false},
+          {version: "4.3.1",
+           client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.1:latest",
+           server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.1:latest",
+           experimental: false},
+          {version: "4.3.2",
+           client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.2:latest",
+           server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.2:latest",
+           experimental: false},
+          {version: "4.3.3",
+           client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.3:latest",
+           server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.3:latest",
+           experimental: false}
+        ]
 
     services:
       irods-server:
-        image: ${{ matrix.server_image }}
+        image: ${{ matrix.irods.server_image }}
         ports:
           - "1247:1247"
           - "20000-20199:20000-20199"
@@ -91,7 +92,7 @@ jobs:
 
     - name: "Install iRODS client wrappers"
       env:
-        DOCKER_IMAGE: ${{ matrix.client_image }}
+        DOCKER_IMAGE: ${{ matrix.irods.client_image }}
       run: |
         # Use -s option for the wrappers to enable re-usable service instances
         # Install is to HOME rather than workspace to avoid clashes with repo e.g. in bin/
@@ -100,7 +101,7 @@ jobs:
 
     - name: "Configure iRODS clients"
       env:
-        DOCKER_IMAGE: ${{ matrix.client_image }}
+        DOCKER_IMAGE: ${{ matrix.irods.client_image }}
         PREFIX: ${{ github.workspace }}
       run: |
         mkdir -p "$HOME/.irods"
@@ -125,7 +126,7 @@ jobs:
 
     - uses: actions/setup-python@v5
       with:
-        python-version: ${{ env.PYTHON_VERSION }}
+        python-version: ${{ matrix.python-version }}
         cache: "pip"
 
     - name: "Setup Python dependencies"
@@ -139,7 +140,7 @@ jobs:
 
     - name: "Run tests"
       env:
-        IRODS_VERSION: ${{ matrix.irods }}
+        IRODS_VERSION: ${{ matrix.irods.version }}
         SINGULARITY_CACHEDIR: ${{ github.workspace }}/.singularity-cache
       run: |
         pip install .
