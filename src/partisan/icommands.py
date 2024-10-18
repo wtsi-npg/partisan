@@ -25,7 +25,6 @@ import shlex
 import subprocess
 from io import StringIO
 from pathlib import Path, PurePath
-from typing import List, Union
 
 from structlog import get_logger
 
@@ -44,6 +43,16 @@ def rmgroup(name: str):
     _run(cmd)
 
 
+def mkuser(name: str):
+    cmd = ["iadmin", "mkuser", name, "rodsuser"]
+    _run(cmd)
+
+
+def rmuser(name: str):
+    cmd = ["iadmin", "rmuser", name]
+    _run(cmd)
+
+
 def group_exists(name: str) -> bool:
     info = iuserinfo(name)
     for line in info.splitlines():
@@ -53,6 +62,18 @@ def group_exists(name: str) -> bool:
             return True
 
     log.debug("Group check", exists=False, name=name)
+    return False
+
+
+def user_exists(name: str) -> bool:
+    info = iuserinfo(name)
+    for line in info.splitlines():
+        log.debug("Checking line", line=line)
+        if re.match(r"type:\s+(rodsuser|groupadmin|rodsadmin)", line):
+            log.debug("User check", exists=True, name=name)
+            return True
+
+    log.debug("User check", exists=False, name=name)
     return False
 
 
@@ -69,7 +90,7 @@ def iuserinfo(name: str = None) -> str:
     raise RodsError(completed.stderr.decode("utf-8").strip())
 
 
-def imkdir(remote_path: Union[PurePath, str], make_parents=True):
+def imkdir(remote_path: PurePath | str, make_parents=True):
     cmd = ["imkdir"]
     if make_parents:
         cmd.append("-p")
@@ -122,8 +143,8 @@ def iinit():
 
 
 def iget(
-    remote_path: Union[PurePath, str],
-    local_path: Union[PurePath, str],
+    remote_path: PurePath | str,
+    local_path: PurePath | str,
     force=False,
     verify_checksum=True,
     recurse=False,
@@ -142,8 +163,8 @@ def iget(
 
 
 def iput(
-    local_path: Union[PurePath, str],
-    remote_path: Union[PurePath, str],
+    local_path: PurePath | str,
+    remote_path: PurePath | str,
     force=False,
     verify_checksum=True,
     recurse=False,
@@ -161,7 +182,7 @@ def iput(
     _run(cmd)
 
 
-def irm(remote_path: Union[PurePath, str], force=False, recurse=False):
+def irm(remote_path: PurePath | str, force=False, recurse=False):
     cmd = ["irm"]
     if force:
         cmd.append("-f")
@@ -181,14 +202,14 @@ def irm(remote_path: Union[PurePath, str], force=False, recurse=False):
             raise
 
 
-def itrim(remote_path: Union[PurePath, str], replica_num: int, min_replicas=2):
+def itrim(remote_path: PurePath | str, replica_num: int, min_replicas=2):
     cmd = ["itrim", "-n", f"{replica_num}", "-N", f"{min_replicas}", remote_path]
     _run(cmd)
 
 
 def icp(
-    from_path: Union[PurePath, str],
-    to_path: Union[PurePath, str],
+    from_path: PurePath | str,
+    to_path: PurePath | str,
     force=False,
     verify_checksum=True,
     recurse=False,
@@ -257,7 +278,7 @@ def remove_specific_sql(alias):
         _run(cmd)
 
 
-def _run(cmd: List[str]):
+def _run(cmd: list[str]):
     log.debug("Running command", cmd=cmd)
 
     completed = subprocess.run(cmd, capture_output=True)

@@ -37,8 +37,11 @@ from partisan.icommands import (
     iquest,
     irm,
     mkgroup,
+    mkuser,
     remove_specific_sql,
     rmgroup,
+    rmuser,
+    user_exists,
 )
 from partisan.irods import AVU, Collection, DataObject
 
@@ -54,6 +57,8 @@ STUDY_GROUPS = ["ss_study_01", "ss_study_02", "ss_study_03"]
 HUMAN_STUDY_GROUPS = [g + "_human" for g in STUDY_GROUPS]
 
 TEST_GROUPS = STUDY_GROUPS + HUMAN_STUDY_GROUPS
+
+RODS_USERS = ["user1", "user2", "user3"]
 
 TEST_SQL_STALE_REPLICATE = "setObjectReplStale"
 TEST_SQL_INVALID_CHECKSUM = "setObjectChecksumInvalid"
@@ -71,6 +76,20 @@ def remove_test_groups():
         for g in TEST_GROUPS:
             if group_exists(g):
                 rmgroup(g)
+
+
+def add_test_users():
+    if have_admin():
+        for u in RODS_USERS:
+            if not user_exists(u):
+                mkuser(u)
+
+
+def remove_test_users():
+    if have_admin():
+        for u in RODS_USERS:
+            if user_exists(u):
+                rmuser(u)
 
 
 def add_sql_test_utilities():
@@ -127,6 +146,24 @@ def set_checksum_invalid(obj: DataObject, replicate_num: int):
     )
 
 
+@pytest.fixture(scope="function")
+def irods_groups():
+    try:
+        add_test_groups()
+        yield
+    finally:
+        remove_test_groups()
+
+
+@pytest.fixture(scope="function")
+def irods_users():
+    try:
+        add_test_users()
+        yield
+    finally:
+        remove_test_users()
+
+
 @pytest.fixture(scope="session")
 def sql_test_utilities():
     try:
@@ -164,7 +201,7 @@ def annotated_collection(simple_collection):
 
 
 @pytest.fixture(scope="function")
-def full_collection(tmp_path):
+def full_collection(tmp_path, irods_groups):
     """A fixture providing a collection with some contents"""
     root_path = PurePath("/testZone/home/irods/test")
     rods_path = add_rods_path(root_path, tmp_path)
@@ -173,11 +210,8 @@ def full_collection(tmp_path):
     coll_path = rods_path / "recursive"
 
     try:
-        add_test_groups()
-
         yield coll_path
     finally:
-        remove_test_groups()
         irm(root_path, force=True, recurse=True)
 
 
@@ -279,7 +313,7 @@ def special_paths(tmp_path):
 
 
 @pytest.fixture(scope="function")
-def ont_gridion(tmp_path):
+def ont_gridion(tmp_path, irods_groups):
     """A fixture providing a set of files based on output from an ONT GridION
     instrument. This dataset provides an example of file and directory naming
     conventions. The file contents are dummy values."""
@@ -290,9 +324,6 @@ def ont_gridion(tmp_path):
     expt_root = rods_path / "gridion"
 
     try:
-        add_test_groups()
-
         yield expt_root
     finally:
         irm(root_path, force=True, recurse=True)
-        remove_test_groups()
