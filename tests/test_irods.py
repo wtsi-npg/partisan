@@ -1476,6 +1476,7 @@ class TestJSON:
             **kwargs,
         )
 
+    @m.it("Can deserialize a collection from JSON")
     def test_collection_json_deserialize(self, simple_collection):
         coll1 = Collection(simple_collection)
         coll1.add_metadata(AVU("a", 1), AVU("b", 2), AVU("c", 3))
