@@ -1383,7 +1383,7 @@ def rods_path_type(
 ) -> Type[RodsItem] | None:
     """Return a Python type representing the kind of iRODS path supplied.
 
-    e.g. Collection for and iRODS collection, DataObject for an iRODS data object.
+    e.g. Collection for an iRODS collection, DataObject for an iRODS data object.
     The value returned is what the iRODS server recognises the path as. If the
     remote path does not exist, returns None.
 
