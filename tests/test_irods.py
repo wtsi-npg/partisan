@@ -1489,10 +1489,22 @@ class TestJSON:
         assert coll2.acl() == coll1.acl()
 
     @m.it("Can serialize a data object to JSON")
-    def test_data_object_json_serialize(self, simple_data_object):
+    def test_data_object_json_serialize(
+        self, irods_groups, irods_users, simple_data_object
+    ):
         obj = DataObject(simple_data_object)
         assert obj.connected()
-        obj.add_metadata(AVU("a", 1), AVU("b", 2), AVU("c", 3))
+
+        metadata = [AVU("a", 1), AVU("b", 2), AVU("c", 3)]
+        acl = [
+            AC("user1", Permission.OWN, zone="testZone"),
+            AC("user2", Permission.WRITE, zone="testZone"),
+            AC("user3", Permission.WRITE, zone="testZone"),
+            AC("public", Permission.READ, zone="testZone"),
+        ]
+
+        obj.add_metadata(*metadata)
+        obj.add_permissions(*acl)
 
         kwargs = {"indent": None, "sort_keys": True}
 
@@ -1506,7 +1518,23 @@ class TestJSON:
                     {Baton.ATTRIBUTE: "c", Baton.VALUE: "3"},
                 ],
                 Baton.ACCESS: [
-                    {Baton.OWNER: "irods", Baton.ZONE: "testZone", Baton.LEVEL: "own"}
+                    {Baton.OWNER: "irods", Baton.ZONE: "testZone", Baton.LEVEL: "own"},
+                    {
+                        Baton.OWNER: "public",
+                        Baton.ZONE: "testZone",
+                        Baton.LEVEL: "read",
+                    },
+                    {Baton.OWNER: "user1", Baton.ZONE: "testZone", Baton.LEVEL: "own"},
+                    {
+                        Baton.OWNER: "user2",
+                        Baton.ZONE: "testZone",
+                        Baton.LEVEL: "write",
+                    },
+                    {
+                        Baton.OWNER: "user3",
+                        Baton.ZONE: "testZone",
+                        Baton.LEVEL: "write",
+                    },
                 ],
                 Baton.SIZE: 555,
                 Baton.CHECKSUM: "39a4aa291ca849d601e4e5b8ed627a04",

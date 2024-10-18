@@ -43,6 +43,16 @@ def rmgroup(name: str):
     _run(cmd)
 
 
+def mkuser(name: str):
+    cmd = ["iadmin", "mkuser", name, "rodsuser"]
+    _run(cmd)
+
+
+def rmuser(name: str):
+    cmd = ["iadmin", "rmuser", name]
+    _run(cmd)
+
+
 def group_exists(name: str) -> bool:
     info = iuserinfo(name)
     for line in info.splitlines():
@@ -52,6 +62,18 @@ def group_exists(name: str) -> bool:
             return True
 
     log.debug("Group check", exists=False, name=name)
+    return False
+
+
+def user_exists(name: str) -> bool:
+    info = iuserinfo(name)
+    for line in info.splitlines():
+        log.debug("Checking line", line=line)
+        if re.match(r"type:\s+(rodsuser|groupadmin|rodsadmin)", line):
+            log.debug("User check", exists=True, name=name)
+            return True
+
+    log.debug("User check", exists=False, name=name)
     return False
 
 

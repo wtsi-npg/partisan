@@ -1304,6 +1304,7 @@ def rods_users(user_type: str = None, zone=None) -> list[User]:
     """
     if user_type is not None and user_type not in [
         "rodsadmin",
+        "groupadmin",
         "rodsgroup",
         "rodsuser",
     ]:
