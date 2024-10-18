@@ -1447,10 +1447,10 @@ class RodsItem(PathLike):
     ability to be serialized/deserialized to/from JSON, including their metadata and
     ACLs.
 
-    The decision to connect or not made on instance construction by passing a BatonPool
+    The decision to connect or not is made on instance construction by passing a BatonPool
     and cannot be changed later. This is to avoid the complexity of reconciling the two
     sets of metadata and ACLs (local and remote) that would be required. The best way
-    to convert bn item from disconnected to connected is to create a new instance with
+    to convert an item from disconnected to connected is to create a new instance with
     the same path and a pool, then copy the metadata and ACLs across.
     """
 
