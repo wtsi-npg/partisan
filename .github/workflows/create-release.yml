@@ -38,7 +38,7 @@ jobs:
           echo MASTER_SHA=$(git rev-parse origin/master) >> $GITHUB_ENV
 
       - name: "Create Release"
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.16.0
         with:
           name: ${{ env.RELEASE_VERSION }}
           prerelease: ${{ !(github.sha == env.MASTER_SHA) }}
