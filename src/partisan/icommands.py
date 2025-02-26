@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021, 2022, 2023, 2024 Genome Research Ltd. All rights
-# reserved.
+# Copyright © 2020, 2021, 2022, 2023, 2024, 2025 Genome Research Ltd. All
+# rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -235,7 +235,11 @@ def iquest(*args) -> str:
 
     completed = subprocess.run(cmd, capture_output=True)
     if completed.returncode == 0:
-        return completed.stdout.decode("utf-8").strip()
+        lines = completed.stdout.decode("utf-8").strip().splitlines()
+        # Remove logging that iquest can mix with its output
+        if lines and lines[0].startswith("Zone is"):
+            lines.pop(0)
+        return "\n".join(lines)
 
     # As of iRODS 4.2.12, iquest behaves from like commands such as grep and
     # exits with a special error code of 1 to indicate a successful query that
@@ -243,6 +247,7 @@ def iquest(*args) -> str:
     if completed.returncode == 1:
         return ""
 
+    # For earlier versions of iRODS
     raise RodsError(completed.stderr.decode("utf-8").strip())
 
 
