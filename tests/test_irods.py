@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021, 2023, 2024 Genome Research Ltd. All rights reserved.
+# Copyright © 2020, 2021, 2023, 2024, 2025 Genome Research Ltd. All
+# rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -739,8 +740,7 @@ class TestCollection:
         for item in coll.contents(recurse=True):
             assert item.acl() == new_acl, "Collection content ACL updated"
 
-    @m.context("When a Collection does not exist")
-    @m.it("When put non-recursively")
+    @m.context("When a Collection does not exist and is put non-recursively")
     @m.it("Is created, with its immediate contents")
     def test_put_collection(self, simple_collection):
         coll = Collection(simple_collection / "sub")
@@ -751,8 +751,7 @@ class TestCollection:
         assert coll.exists()
         assert coll.contents() == [Collection(coll.path / "empty")]
 
-    @m.context("When a Collection does not exist")
-    @m.it("When put recursively")
+    @m.context("When a Collection does not exist and is put recursively")
     @m.it("Is created, with descendants and their contents")
     def test_put_collection_recur(self, simple_collection):
         coll = Collection(simple_collection / "sub")
@@ -780,6 +779,47 @@ class TestCollection:
         assert lorem.checksum() == "39a4aa291ca849d601e4e5b8ed627a04"
         assert utf8.size() == 2522
         assert utf8.checksum() == "500cec3fbb274064e2a25fa17a69638a"
+
+    @m.context("When a Collection does not exist and is put recursively")
+    @m.it("Collection paths can be pruned by providing a filter predicate")
+    def test_put_collection_filter(self, simple_collection):
+        coll = Collection(simple_collection / "sub")
+        assert not coll.exists()
+
+        local_path = Path("./tests/data/simple").absolute()
+        coll.put(
+            local_path,
+            recurse=True,
+            verify_checksum=True,
+            filter_fn=lambda path: path.name == "data_object",  # Prune this path
+        )
+        assert coll.exists()
+
+        sub1 = Collection(coll.path / "collection")
+        assert coll.contents() == [sub1]
+
+        empty_coll = Collection(sub1.path / "empty")
+        assert sub1.contents() == [empty_coll]
+
+    @m.context("When a Collection does not exist and is put recursively")
+    @m.it("Data object paths can be skipped by providing a filter predicate")
+    def test_put_collection_filter(self, simple_collection):
+        coll = Collection(simple_collection / "sub")
+        assert not coll.exists()
+
+        local_path = Path("./tests/data/simple").absolute()
+        coll.put(
+            local_path,
+            recurse=True,
+            verify_checksum=True,
+            filter_fn=lambda path: path.stat().st_size == 0,  # Skip empty files
+        )
+        assert coll.exists()
+
+        sub2 = Collection(coll.path / "data_object")
+        lorem = DataObject(sub2.path / "lorem.txt")
+        utf8 = DataObject(sub2.path / "utf-8.txt")
+        assert sub2.contents() == [lorem, utf8]
 
 
 @m.describe("DataObject")
