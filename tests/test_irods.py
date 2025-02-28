@@ -640,6 +640,48 @@ class TestCollection:
                 public_read,
             ], "Collection content ACL updated"
 
+    @m.it("Can have access controls added, recursively, with a filter")
+    def test_add_ac_collection_recurse_filter(self, full_collection):
+        zone = "testZone"
+        coll = Collection(full_collection)
+        irods_own = AC("irods", Permission.OWN, zone=zone)
+        public_read = AC("public", Permission.READ, zone=zone)
+
+        assert coll.acl() == [irods_own]
+        for item in coll.contents(recurse=True):
+            assert item.acl() == [irods_own]
+
+        assert (
+            coll.add_permissions(
+                irods_own,
+                recurse=True,
+                filter_fn=lambda x: x.rods_type == DataObject and x.name == "leaf1.txt",
+            )
+            == 0
+        ), "Nothing is added when new ACL == all old ACL, recursively"
+        for item in coll.contents(recurse=True):
+            assert item.acl() == [irods_own]
+
+        tree = [
+            "recurse",
+            "level1/",
+            "level1/level2/",
+            "level1/level2/leaf2.txt",
+        ]
+        assert coll.add_permissions(
+            public_read,
+            recurse=True,
+            filter_fn=lambda x: x.rods_type == DataObject and x.name == "leaf1.txt",
+        ) == len(tree), "Access control added recursively"
+
+        for item in coll.contents(recurse=True):
+            expected = (
+                [irods_own]
+                if item.rods_type == DataObject and item.name == "leaf1.txt"
+                else [irods_own, public_read]
+            )
+            assert item.acl() == expected, "Collection content ACL updated"
+
     @m.it("Can have access controls removed, non-recursively")
     def test_rem_ac_collection(self, full_collection):
         zone = "testZone"
@@ -690,6 +732,38 @@ class TestCollection:
         for item in coll.contents(recurse=True):
             assert item.acl() == [irods_own], "Collection content ACL updated"
 
+    @m.it("Can have access controls removed, recursively, with a filter")
+    def test_rem_ac_collection_recurse_filter(self, full_collection):
+        zone = "testZone"
+        coll = Collection(full_collection)
+        irods_own = AC("irods", Permission.OWN, zone=zone)
+        public_read = AC("public", Permission.READ, zone=zone)
+
+        coll.add_permissions(public_read, recurse=True)
+        assert coll.acl() == [irods_own, public_read]
+        for item in coll.contents(recurse=True):
+            assert item.acl() == [irods_own, public_read]
+
+        tree = [
+            "recurse",
+            "level1/",
+            "level1/level2/",
+            "level1/level2/leaf2.txt",
+        ]
+        assert coll.remove_permissions(
+            public_read,
+            recurse=True,
+            filter_fn=lambda x: x.rods_type == DataObject and x.name == "leaf1.txt",
+        ) == len(tree), "Access control removed recursively"
+
+        for item in coll.contents(recurse=True):
+            expected = (
+                [irods_own, public_read]
+                if item.rods_type == DataObject and item.name == "leaf1.txt"
+                else [irods_own]
+            )
+            assert item.acl() == expected, "Collection content ACL updated"
+
     @m.it("Can have access controls superseded, non-recursively")
     def test_super_ac_collection(self, full_collection):
         zone = "testZone"
@@ -739,6 +813,38 @@ class TestCollection:
         assert coll.acl() == new_acl, "Access superseded removed recursively"
         for item in coll.contents(recurse=True):
             assert item.acl() == new_acl, "Collection content ACL updated"
+
+    @m.it("Can have access controls superseded, recursively, with a filter")
+    def test_super_ac_collection_recur_filter(self, full_collection):
+        zone = "testZone"
+        coll = Collection(full_collection)
+        irods_own = AC("irods", Permission.OWN, zone=zone)
+        public_read = AC("public", Permission.READ, zone=zone)
+        study_01_read = AC("ss_study_01", Permission.READ, zone=zone)
+        study_02_read = AC("ss_study_02", Permission.READ, zone=zone)
+
+        coll.add_permissions(study_01_read, study_02_read, recurse=True)
+        assert coll.acl() == [irods_own, study_01_read, study_02_read]
+        for item in coll.contents(recurse=True):
+            assert item.acl() == [irods_own, study_01_read, study_02_read]
+
+        new_acl = [irods_own, public_read]
+        num_removed, num_added = coll.supersede_permissions(
+            *new_acl,
+            recurse=True,
+            filter_fn=lambda x: x.rods_type == DataObject and x.name == "leaf1.txt",
+        )
+        assert num_removed == 2 * (5 - 1)  # study access
+        assert num_added == 1 * (5 - 1)  # public access
+        assert coll.acl() == new_acl, "Access superseded removed recursively"
+
+        for item in coll.contents(recurse=True):
+            expected = (
+                [irods_own, study_01_read, study_02_read]
+                if item.rods_type == DataObject and item.name == "leaf1.txt"
+                else new_acl
+            )
+            assert item.acl() == expected, "Collection content ACL updated"
 
     @m.context("When a Collection does not exist and is put non-recursively")
     @m.it("Is created, with its immediate contents")
