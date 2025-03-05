@@ -30,3 +30,9 @@ class TestICommands:
         output = iquest("-z", "testZone", "select COLL_NAME").splitlines()
         assert output
         assert not output[0].startswith("Zone is testZone")
+
+    @m.context("When a query returns no results")
+    @m.it("Returns the empty string")
+    def test_iquest_no_results(self):
+        output = iquest("select COLL_NAME where COLL_NAME = 'no_such_collection'")
+        assert output == ""
