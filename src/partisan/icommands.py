@@ -236,9 +236,13 @@ def iquest(*args) -> str:
     completed = subprocess.run(cmd, capture_output=True)
     if completed.returncode == 0:
         lines = completed.stdout.decode("utf-8").strip().splitlines()
+
         # Remove logging that iquest can mix with its output
+        if lines and lines[0].lstrip().startswith("CAT_NO_ROWS_FOUND"):
+            return ""
         if lines and lines[0].startswith("Zone is"):
             lines.pop(0)
+
         return "\n".join(lines)
 
     # As of iRODS 4.2.12, iquest behaves from like commands such as grep and
