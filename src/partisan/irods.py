@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021, 2022, 2023, 2024 Genome Research Ltd. All
+# Copyright © 2020, 2021, 2022, 2023, 2024, 2025 Genome Research Ltd. All
 # rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -1502,13 +1502,14 @@ class RodsItem(PathLike):
         """Return True if the item is connected."""
         return self._pool is not None
 
-    def avu(self, attribute: Any, timeout=None, tries=1) -> AVU:
+    def avu(self, attribute: Any, ancestors=False, timeout=None, tries=1) -> AVU:
         """Return an unique AVU from the item's metadata, given an attribute, or raise
         an error.
 
         Args:
             attribute: The attribute of the expected AVU. If this is not a string,
                the string representation of this argument is used.
+            ancestors: Include metadata collated from ancestor collections.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -1518,7 +1519,7 @@ class RodsItem(PathLike):
         attr = str(attribute)
         avus = [
             avu
-            for avu in self.metadata(timeout=timeout, tries=tries)
+            for avu in self.metadata(ancestors=ancestors, timeout=timeout, tries=tries)
             if avu.attribute == attr
         ]
 
@@ -1535,30 +1536,38 @@ class RodsItem(PathLike):
 
         return avus[0]
 
-    def has_metadata(self, *avus: AVU, timeout=None, tries=1) -> bool:
+    def has_metadata(self, *avus: AVU, ancestors=False, timeout=None, tries=1) -> bool:
         """Return True if all the argument AVUs are in the item's metadata.
 
         Args:
             *avus: One or more AVUs to test.
+            ancestors: Include metadata collated from ancestor collections.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
         Returns: True if every AVU (i.e. key, value and optionally, unit) is present.
         """
-        return set(avus).issubset(self.metadata(timeout=timeout, tries=tries))
+        return set(avus).issubset(
+            self.metadata(ancestors=ancestors, timeout=timeout, tries=tries)
+        )
 
-    def has_metadata_attrs(self, *attributes: Any, timeout=None, tries=1) -> bool:
+    def has_metadata_attrs(
+        self, *attributes: Any, ancestors=False, timeout=None, tries=1
+    ) -> bool:
         """Return True if all the argument attributes are in the item's metadata.
 
         Args:
             *attributes: One or more attributes to test. If any of these are not strings,
                their string representations is used.
+            ancestors: Include metadata collated from ancestor collections.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
         Returns: True if every attribute is present in at least one AVU.
         """
-        collated = self.collated_metadata(timeout=timeout, tries=tries)
+        collated = self.collated_metadata(
+            ancestors=ancestors, timeout=timeout, tries=tries
+        )
         attrs = [str(a) for a in attributes]
         return set(attrs).issubset(collated.keys())
 
@@ -1845,18 +1854,23 @@ class RodsItem(PathLike):
         return sorted(avus)
 
     @rods_type_check
-    def metadata(self, attribute: Any = None, timeout=None, tries=1) -> list[AVU]:
+    def metadata(
+        self, attribute: Any = None, ancestors=False, timeout=None, tries=1
+    ) -> list[AVU]:
         """Return the item's metadata.
 
         Args:
             attribute: Return only AVUs having this attribute. If this is not a string,
                the string representation of this argument is used.
+            ancestors: Include metadata collated from ancestor collections.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
         Returns: List[AVU]
         """
         if not self.connected():
+            if ancestors:
+                raise ValueError("Cannot retrieve ancestor metadata when disconnected")
             return sorted(self._local_metadata)
 
         item = self._list(avu=True, timeout=timeout, tries=tries).pop()
@@ -1864,13 +1878,18 @@ class RodsItem(PathLike):
             raise BatonError(f"{Baton.AVUS} key missing from {item}")
 
         avus = item[Baton.AVUS]
+        if ancestors:
+            avus.extend(self.ancestor_metadata(timeout=timeout, tries=tries))
+
         if attribute is not None:
             attr = str(attribute)
             avus = [avu for avu in avus if avu.attribute == attr]
 
         return sorted(avus)
 
-    def collated_metadata(self, timeout=None, tries=1) -> dict[str:list]:
+    def collated_metadata(
+        self, ancestors=False, timeout=None, tries=1
+    ) -> dict[str:list]:
         """Return a dictionary mapping AVU attributes to lists of corresponding AVU
         values.
 
@@ -1879,13 +1898,14 @@ class RodsItem(PathLike):
         would be {"Key1": ["Value1", "Value2"]}.
 
         Args:
+            ancestors: Include metadata collated from ancestor collections.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
         Returns: Dict[str:List]
         """
         collated = defaultdict(list)
-        for avu in self.metadata(timeout=timeout, tries=tries):
+        for avu in self.metadata(ancestors=ancestors, timeout=timeout, tries=tries):
             collated[avu.attribute].append(avu.value)
 
         return collated
