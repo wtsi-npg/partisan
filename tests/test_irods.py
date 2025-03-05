@@ -312,6 +312,73 @@ class TestRodsPath:
         assert make_rods_item(simple_data_object) == DataObject(simple_data_object)
         assert DataObject(simple_data_object).rods_type == DataObject
 
+    @m.it("Can report its ancestors")
+    def test_collection_ancestors(self, full_collection):
+        assert Collection("/testZone").ancestors() == [Collection("/")]
+        assert Collection("/testZone/level0").ancestors() == [
+            Collection("/testZone"),
+            Collection("/"),
+        ]
+        assert Collection("/testZone/level0/level1").ancestors() == [
+            Collection("/testZone/level0"),
+            Collection("/testZone"),
+            Collection("/"),
+        ]
+        assert DataObject("/testZone/level0/level1/leaf.txt").ancestors() == [
+            Collection("/testZone/level0/level1"),
+            Collection("/testZone/level0"),
+            Collection("/testZone"),
+            Collection("/"),
+        ]
+
+    @m.it("Returns an empty list for root collection ancestors")
+    def test_ancestor_metadata_root(self):
+        root = Collection("/testZone")
+        assert root.ancestor_metadata() == []
+
+    @m.it("Returns combined metadata from all ancestors")
+    def test_ancestor_metadata_nested(self, full_collection):
+        root_avu = AVU("level", "root")
+        desc_avu = AVU("level", "descendant")
+
+        root = Collection(full_collection)
+        root.add_metadata(root_avu)
+
+        for item in root.contents(recurse=True):
+            assert item.ancestor_metadata() == root.metadata(), "Shared root metadata"
+
+        for item in root.contents(recurse=True):
+            item.add_metadata(desc_avu)
+
+        for child in root.contents(recurse=False):
+            assert child.ancestor_metadata() == root.metadata(), "Shared root metadata"
+
+            for desc in child.contents(recurse=True):
+                assert desc.ancestor_metadata() == sorted(
+                    [
+                        *root.metadata(),
+                        desc_avu,
+                    ]
+                ), "Shared descendant metadata"
+
+        for item in root.contents(recurse=True):
+            if item.rods_type == Collection:
+                item.add_metadata(AVU("name", item.path.name))
+
+        for item in root.contents(recurse=True):
+            if item.rods_type == DataObject and item.name in [
+                "leaf1.txt",
+                "leaf2.txt",
+            ]:
+                assert item.ancestor_metadata() == sorted(
+                    [
+                        root_avu,
+                        desc_avu,
+                        AVU("name", "level1"),
+                        AVU("name", "level2"),
+                    ]
+                )
+
 
 @m.describe("Collection")
 class TestCollection:

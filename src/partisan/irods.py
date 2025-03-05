@@ -1818,6 +1818,32 @@ class RodsItem(PathLike):
 
         return len(to_remove), len(to_add)
 
+    def ancestors(self) -> list[Collection]:
+        """Return a list of the item's ancestors.
+
+        This list ultimately includes the root collection "/", to be consistent with
+        the behaviour of the Python pathlib API, even though "/" is not directly usable
+        as a collection on an iRODS system, being host to the iRODS zones.
+        """
+        if isinstance(self, DataObject):
+            return [Collection(p) for p in PurePath(self.path, self.name).parents]
+
+        return [Collection(p) for p in self.path.parents]
+
+    def ancestor_metadata(self, timeout=None, tries=1) -> list[AVU]:
+        """Return the metadata of the item's ancestors.
+
+        Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns: All the AVUs of the item's ancestors.
+        """
+        avus = set()
+        for coll in self.ancestors():
+            avus.update(coll.metadata(timeout=timeout, tries=tries))
+        return sorted(avus)
+
     @rods_type_check
     def metadata(self, attribute: Any = None, timeout=None, tries=1) -> list[AVU]:
         """Return the item's metadata.
