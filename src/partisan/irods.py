@@ -2873,6 +2873,7 @@ class Collection(RodsItem):
         local_checksum=None,
         compare_checksums=False,
         fill=False,
+        filter_fn: callable = lambda _: False,
         force=True,
         timeout=None,
         tries=1,
@@ -2883,6 +2884,11 @@ class Collection(RodsItem):
             local_path: The local path of a directory to put into iRODS at the path
                 specified by this collection.
             recurse: Recurse through subdirectories.
+            filter_fn: A predicate accepting a single pathlib.Path argument to which
+                each local path (directories and files) will be passed before putting
+                into iRODS. If the predicate returns True, the path will be filtered
+                i.e. not be put into iRODS. Filtering directories will result in them
+                being pruned. Filtering files will result in them being skipped.
             calculate_checksum: Calculate remote checksums for all data object replicas.
                 See DataObject.put() for more information.
             verify_checksum: Verify the local checksum calculated by the iRODS C API
@@ -2914,15 +2920,28 @@ class Collection(RodsItem):
         self.create(exist_ok=True, timeout=timeout, tries=tries)
 
         if recurse:
-            for root, dirs, files in os.walk(local_path):
-                for d in dirs:
-                    p = Path(root, d)
+            for dirpath, dirnames, filenames in os.walk(local_path, topdown=True):
+                # As topdown is True, we can prune the walk by removing from dirnames
+                # in-place. N.B that we iterate over a shallow copy of dirnames.
+                for d in dirnames[:]:
+                    p = Path(dirpath, d)
                     r = PurePath(self.path, p.relative_to(local_path))
-                    log.debug("Creating collection", local_path=d, remote_path=r)
+
+                    if filter_fn(p):
+                        log.debug("Skipping directory put", local_path=p, remote_path=r)
+                        dirnames.remove(d)
+                        continue
+
+                    log.debug("Creating collection", local_path=p, remote_path=r)
                     Collection(r).create(exist_ok=True, timeout=timeout)
-                for f in files:
-                    p = Path(root, f)
+                for f in filenames:
+                    p = Path(dirpath, f)
                     r = PurePath(self.path, p.relative_to(local_path))
+
+                    if filter_fn(p):
+                        log.debug("Skipping file put", local_path=p, remote_path=r)
+                        continue
+
                     log.debug("Putting data object", local_path=p, remote_path=r)
                     DataObject(r).put(
                         p,
@@ -2939,10 +2958,20 @@ class Collection(RodsItem):
             for p in Path(local_path).iterdir():
                 if p.is_dir():
                     r = PurePath(self.path, p.relative_to(local_path))
+
+                    if filter_fn(p):
+                        log.debug("Skipping directory put", local_path=p, remote_path=r)
+                        continue
+
                     log.debug("Creating collection", local_path=p, remote_path=r)
                     Collection(r).create(exist_ok=True, timeout=timeout)
                 else:
                     r = PurePath(self.path, p.name)
+
+                    if filter_fn(p):
+                        log.debug("Skipping file put", local_path=p, remote_path=r)
+                        continue
+
                     log.debug("Putting data object", local_path=p, remote_path=r)
                     DataObject(r).put(
                         p,
@@ -2957,7 +2986,14 @@ class Collection(RodsItem):
 
         return self
 
-    def add_permissions(self, *acs: AC, recurse=False, timeout=None, tries=1) -> int:
+    def add_permissions(
+        self,
+        *acs: AC,
+        recurse=False,
+        filter_fn: callable = lambda _: False,
+        timeout=None,
+        tries=1,
+    ) -> int:
         """Add access controls to the collection. Return the number of access
         controls added. If some argument access controls are already present,
         those arguments will be ignored.
@@ -2965,6 +3001,10 @@ class Collection(RodsItem):
         Args:
             *acs: Access controls.
             recurse: Recursively add access controls.
+            filter_fn: A predicate accepting a single RodsItem argument to which each
+                iRODS path will be passed during recursive operations, before adding
+                permissions. If the predicate returns True, the path will be filtered
+                i.e. not have permissions added.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -2973,10 +3013,21 @@ class Collection(RodsItem):
         num_added = super().add_permissions(*acs, timeout=timeout, tries=tries)
         if recurse:
             for item in self.iter_contents(recurse=recurse):
+                if filter_fn(item):
+                    log.debug("Skipping permissions add", path=item, acl=acs)
+                    continue
+
                 num_added += item.add_permissions(*acs, timeout=timeout, tries=tries)
         return num_added
 
-    def remove_permissions(self, *acs: AC, recurse=False, timeout=None, tries=1) -> int:
+    def remove_permissions(
+        self,
+        *acs: AC,
+        recurse=False,
+        filter_fn: callable = lambda _: False,
+        timeout=None,
+        tries=1,
+    ) -> int:
         """Remove access controls from the collection. Return the number of access
         controls removed. If some argument access controls are not present, those
         arguments will be ignored.
@@ -2984,6 +3035,10 @@ class Collection(RodsItem):
         Args:
             *acs: Access controls.
             recurse: Recursively remove access controls.
+            filter_fn: A predicate accepting a single RodsItem argument to which each
+                iRODS path will be passed during recursive operations, before removing
+                permissions. If the predicate returns True, the path will be filtered
+                i.e. not have permissions removed.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -2992,13 +3047,22 @@ class Collection(RodsItem):
         num_removed = super().remove_permissions(*acs, timeout=timeout, tries=tries)
         if recurse:
             for item in self.iter_contents(recurse=recurse):
+                if filter_fn(item):
+                    log.debug("Skipping permissions remove", path=item, acl=acs)
+                    continue
+
                 num_removed += item.remove_permissions(
                     *acs, timeout=timeout, tries=tries
                 )
         return num_removed
 
     def supersede_permissions(
-        self, *acs: AC, recurse=False, timeout=None, tries=1
+        self,
+        *acs: AC,
+        recurse=False,
+        filter_fn: callable = lambda _: False,
+        timeout=None,
+        tries=1,
     ) -> tuple[int, int]:
         """Remove all access controls from the collection, replacing them with the
         specified access controls. Return the numbers of access controls
@@ -3007,6 +3071,10 @@ class Collection(RodsItem):
         Args:
             *acs: Access controls.
             recurse: Recursively supersede access controls.
+            filter_fn: A predicate accepting a single RodsItem argument to which each
+                iRODS path will be passed during recursive operations, before
+                superseding permissions. If the predicate returns True, the path will be
+                filtered i.e. not have permissions superseded.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -3017,6 +3085,10 @@ class Collection(RodsItem):
         )
         if recurse:
             for item in self.iter_contents(recurse=recurse):
+                if filter_fn(item):
+                    log.debug("Skipping permissions supersede", path=item, acl=acs)
+                    continue
+
                 nr, na = item.supersede_permissions(*acs, timeout=timeout, tries=tries)
                 num_removed += nr
                 num_added += na
