@@ -2841,8 +2841,8 @@ class Collection(RodsItem):
             filter_fn: A predicate accepting a single pathlib.Path argument to which
                 each local path (directories and files) will be passed before putting
                 into iRODS. If the predicate returns True, the path will be filtered
-                i.e. not be put into iRODS. Filtering collections will result in them
-                being pruned. Filtering data objects will result in them being skipped.
+                i.e. not be put into iRODS. Filtering directories will result in them
+                being pruned. Filtering files will result in them being skipped.
             calculate_checksum: Calculate remote checksums for all data object replicas.
                 See DataObject.put() for more information.
             verify_checksum: Verify the local checksum calculated by the iRODS C API
