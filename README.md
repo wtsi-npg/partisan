@@ -79,8 +79,8 @@ To make an object representing a collection, pass a string or `os.PathLike`
 to the `Collection` constructor. iRODS paths are virtual, existing only in
 the iRODS IES database. A `Collection` is a Python `os.PathLike` object.
 
-     coll = Collection(ont_gridion)
-     assert coll.exists(), "The collection exists"
+    coll = Collection("/path/in/irods/")
+    assert coll.exists(), "The collection exists"
 
  We can examine the collection permissions. Note that you may get a
  different result on your iRODS, depending on your user and zone.
@@ -93,23 +93,41 @@ We can list the collection, which returns a new instance.
 
 We can examine the collection's immediate contents.
 
-        assert coll.contents() == [
-            Collection(ont_gridion / "66")
-        ], "The collection contains one sub-collection"
+    assert coll.contents() == [
+        Collection(ont_gridion / "66")
+    ], "The collection contains one sub-collection"
 
 We can examine the collection's contents recursively. If you print the
 contents, you'll see that collections sort before data objects.
 
-        assert len(coll.contents(recurse=True)) == 26
+    assert len(coll.contents(recurse=True)) == 26
 
 We can examine the collection's metadata.
 
-        assert coll.metadata() == [], "The collection has no metadata"
+    assert coll.metadata() == [], "The collection has no metadata"
 
 We can examine the collection's permissions. Note that you may get a
 different result on your iRODS, depending on your user and zone.
 
-        assert coll.permissions() == [AC("irods", Permission.OWN, zone="testZone")]
+    assert coll.permissions() == [AC("irods", Permission.OWN, zone="testZone")]
+
+We can upload directory hierarchy to create a collection hierarchy in
+iRODS.
+
+    for item in coll.put(local_dir, recurse=True, verify_checksum=True):
+        assert item.exists(), "The item exists"
+        // Do something with the item
+
+We can exclude some paths from the upload. Here we omit empty files.
+
+    for item in coll.put(local_dir,
+                         recurse=True,
+                         verify_checksum=True,
+                         filter_fn=filter_fn=(
+                            lambda p: os.path.isfile(p) and os.path.getsize(p) == 0
+                         )):
+        // Do something with the item
+
 
 ### DataObjects
 
