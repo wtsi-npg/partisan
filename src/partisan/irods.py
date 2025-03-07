@@ -513,9 +513,7 @@ class Baton:
                 "Exhausted all timeouts, stopping client", client=self, tryno=tries
             )
 
-        # By setting a timeout here (0.1 second is arbitrary) we will raise an Empty
-        # exception. This shouldn't happen because timeouts are dealt with above.
-        response = lifo.get(timeout=0.1)
+        response = lifo.get(timeout=120)
         return self._unwrap(response)
 
     @staticmethod
