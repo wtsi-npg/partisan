@@ -920,9 +920,16 @@ class TestCollection:
         assert not coll.exists()
 
         local_path = Path("./tests/data/simple/collection").absolute()
-        coll.put(local_path, recurse=False)
-        assert coll.exists()
-        assert coll.contents() == [Collection(coll.path / "empty")]
+
+        items = [item for item in coll.put(local_path, recurse=False)]
+        for item in items:
+            assert item.exists()
+
+        assert items[0] == coll
+        assert items[0].contents() == [Collection(coll.path / "child")]
+
+        assert items[1] == Collection(coll.path / "child")
+        assert len(items) == 2
 
     @m.context("When a Collection does not exist and is put recursively")
     @m.it("Is created, with descendants and their contents")
@@ -931,27 +938,36 @@ class TestCollection:
         assert not coll.exists()
 
         local_path = Path("./tests/data/simple").absolute()
-        coll.put(local_path, recurse=True, verify_checksum=True)
-        assert coll.exists()
+        items = [
+            item for item in coll.put(local_path, recurse=True, verify_checksum=True)
+        ]
+        for item in items:
+            assert item.exists()
 
         sub1 = Collection(coll.path / "collection")
         sub2 = Collection(coll.path / "data_object")
-        assert coll.contents() == [sub1, sub2]
-
-        empty_coll = Collection(sub1.path / "empty")
-        assert sub1.contents() == [empty_coll]
-
-        empty_obj = DataObject(sub2.path / "empty.txt")
-        lorem = DataObject(sub2.path / "lorem.txt")
+        child = Collection(sub1.path / "child")
         utf8 = DataObject(sub2.path / "utf-8.txt")
-        assert sub2.contents() == [empty_obj, lorem, utf8]
+        empty = DataObject(sub2.path / "empty.txt")
+        lorem = DataObject(sub2.path / "lorem.txt")
+        ignore = DataObject(child.path / ".gitignore")
 
-        assert empty_obj.size() == 0
-        assert empty_obj.checksum() == "d41d8cd98f00b204e9800998ecf8427e"
+        assert items == [coll, sub1, sub2, child, ignore, empty, lorem, utf8]
+
+        assert coll.exists()
+        assert coll.contents() == [sub1, sub2]
+        assert sub1.contents() == [child]
+        assert child.contents() == [ignore]
+        assert sub2.contents() == [empty, lorem, utf8]
+
+        assert empty.size() == 0
+        assert empty.checksum() == "d41d8cd98f00b204e9800998ecf8427e"
         assert lorem.size() == 555
         assert lorem.checksum() == "39a4aa291ca849d601e4e5b8ed627a04"
         assert utf8.size() == 2522
         assert utf8.checksum() == "500cec3fbb274064e2a25fa17a69638a"
+        assert ignore.size() == 0
+        assert ignore.checksum() == "d41d8cd98f00b204e9800998ecf8427e"
 
     @m.context("When a Collection does not exist and is put recursively")
     @m.it("Collection paths can be pruned by providing a filter predicate")
@@ -960,19 +976,26 @@ class TestCollection:
         assert not coll.exists()
 
         local_path = Path("./tests/data/simple").absolute()
-        coll.put(
-            local_path,
-            recurse=True,
-            verify_checksum=True,
-            filter_fn=lambda path: path.name == "data_object",  # Prune this path
-        )
-        assert coll.exists()
+        items = [
+            item
+            for item in coll.put(
+                local_path,
+                recurse=True,
+                verify_checksum=True,
+                filter_fn=lambda p: p.name == "data_object",  # Prune this path
+            )
+        ]
+        for item in items:
+            assert item.exists()
 
         sub1 = Collection(coll.path / "collection")
-        assert coll.contents() == [sub1]
+        child = Collection(sub1.path / "child")
 
-        empty_coll = Collection(sub1.path / "empty")
-        assert sub1.contents() == [empty_coll]
+        assert items == [coll, sub1, child]
+
+        assert coll.exists()
+        assert coll.contents() == [sub1]
+        assert sub1.contents() == [child]
 
     @m.context("When a Collection does not exist and is put recursively")
     @m.it("Data object paths can be skipped by providing a filter predicate")
@@ -981,17 +1004,29 @@ class TestCollection:
         assert not coll.exists()
 
         local_path = Path("./tests/data/simple").absolute()
-        coll.put(
-            local_path,
-            recurse=True,
-            verify_checksum=True,
-            filter_fn=lambda path: path.stat().st_size == 0,  # Skip empty files
-        )
-        assert coll.exists()
+        items = [
+            item
+            for item in coll.put(
+                local_path,
+                recurse=True,
+                verify_checksum=True,
+                filter_fn=(
+                    lambda p: os.path.isfile(p) and os.path.getsize(p) == 0
+                ),  # Skip empty files
+            )
+        ]
+        for item in items:
+            assert item.exists()
 
+        sub1 = Collection(coll.path / "collection")
         sub2 = Collection(coll.path / "data_object")
+        child = Collection(sub1.path / "child")
         lorem = DataObject(sub2.path / "lorem.txt")
         utf8 = DataObject(sub2.path / "utf-8.txt")
+
+        assert items == [coll, sub1, sub2, child, lorem, utf8]
+
+        assert coll.exists()
         assert sub2.contents() == [lorem, utf8]
 
 

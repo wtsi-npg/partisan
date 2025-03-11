@@ -41,6 +41,7 @@ from threading import Thread
 from typing import (
     Annotated,
     Any,
+    Generator,
     Iterable,
     Type,
 )
@@ -2877,7 +2878,7 @@ class Collection(RodsItem):
         force=True,
         timeout=None,
         tries=1,
-    ) -> Collection:
+    ) -> Generator[Collection | DataObject, Any, None]:
         """Put the collection into iRODS.
 
         Args:
@@ -2917,10 +2918,15 @@ class Collection(RodsItem):
         if not Path(local_path).is_dir():
             raise ValueError(f"Local path '{local_path}' is not a directory")
 
-        self.create(exist_ok=True, timeout=timeout, tries=tries)
+        yield self.create(exist_ok=True, timeout=timeout, tries=tries)
 
         if recurse:
             for dirpath, dirnames, filenames in os.walk(local_path, topdown=True):
+                # As topdown is True, we can sort dirnames in-place to get a predictable
+                # walk order
+                dirnames.sort()
+                filenames.sort()
+
                 # As topdown is True, we can prune the walk by removing from dirnames
                 # in-place. N.B that we iterate over a shallow copy of dirnames.
                 for d in dirnames[:]:
@@ -2933,7 +2939,10 @@ class Collection(RodsItem):
                         continue
 
                     log.debug("Creating collection", local_path=p, remote_path=r)
-                    Collection(r).create(exist_ok=True, timeout=timeout)
+                    yield Collection(r, pool=self._pool).create(
+                        exist_ok=True, timeout=timeout
+                    )
+
                 for f in filenames:
                     p = Path(dirpath, f)
                     r = PurePath(self.path, p.relative_to(local_path))
@@ -2943,7 +2952,7 @@ class Collection(RodsItem):
                         continue
 
                     log.debug("Putting data object", local_path=p, remote_path=r)
-                    DataObject(r).put(
+                    yield DataObject(r, pool=self._pool).put(
                         p,
                         calculate_checksum=calculate_checksum,
                         verify_checksum=verify_checksum,
@@ -2955,36 +2964,41 @@ class Collection(RodsItem):
                         tries=tries,
                     )
         else:
+            dirs, files = [], []
             for p in Path(local_path).iterdir():
-                if p.is_dir():
-                    r = PurePath(self.path, p.relative_to(local_path))
+                dirs.append(p) if p.is_dir else files.append(p)
 
-                    if filter_fn(p):
-                        log.debug("Skipping directory put", local_path=p, remote_path=r)
-                        continue
+            for p in sorted(dirs):
+                r = PurePath(self.path, p.relative_to(local_path))
 
-                    log.debug("Creating collection", local_path=p, remote_path=r)
-                    Collection(r).create(exist_ok=True, timeout=timeout)
-                else:
-                    r = PurePath(self.path, p.name)
+                if filter_fn(p):
+                    log.debug("Skipping directory put", local_path=p, remote_path=r)
+                    continue
 
-                    if filter_fn(p):
-                        log.debug("Skipping file put", local_path=p, remote_path=r)
-                        continue
+                log.debug("Creating collection", local_path=p, remote_path=r)
+                yield Collection(r, pool=self._pool).create(
+                    exist_ok=True, timeout=timeout
+                )
 
-                    log.debug("Putting data object", local_path=p, remote_path=r)
-                    DataObject(r).put(
-                        p,
-                        calculate_checksum=calculate_checksum,
-                        verify_checksum=verify_checksum,
-                        local_checksum=local_checksum,
-                        compare_checksums=compare_checksums,
-                        force=force,
-                        timeout=timeout,
-                        tries=tries,
-                    )
+            for p in sorted(files):
+                r = PurePath(self.path, p.name)
 
-        return self
+                if filter_fn(p):
+                    log.debug("Skipping file put", local_path=p, remote_path=r)
+                    continue
+
+                log.debug("Putting data object", local_path=p, remote_path=r)
+                yield DataObject(r, pool=self._pool).put(
+                    p,
+                    calculate_checksum=calculate_checksum,
+                    verify_checksum=verify_checksum,
+                    local_checksum=local_checksum,
+                    compare_checksums=compare_checksums,
+                    fill=fill,
+                    force=force,
+                    timeout=timeout,
+                    tries=tries,
+                )
 
     def add_permissions(
         self,
