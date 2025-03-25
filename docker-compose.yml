@@ -21,10 +21,8 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     restart: always
-    volumes:
-      - "./tests/.irods:/home/appuser/.irods/"
     environment:
-      IRODS_ENVIRONMENT_FILE: "/home/appuser/.irods/irods_environment.json"
+      IRODS_ENVIRONMENT_FILE: "/app/tests/.irods/irods_environment.json"
       IRODS_PASSWORD: "irods"
       IRODS_VERSION: "4.2.11"
     depends_on:
