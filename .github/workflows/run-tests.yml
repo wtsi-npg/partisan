@@ -29,7 +29,7 @@ jobs:
           {version: "4.3.3",
            client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.3:latest",
            server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.3:latest",
-           experimental: false}
+           experimental: false},
           { version: "4.3.4",
             client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.4:latest",
             server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.4:latest",
