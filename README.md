@@ -71,8 +71,6 @@ The assertions are correct for a test system where the zone is named
 with 2 replicas, and the server is configured to use MD5 checksums. A 
 runnable copy of these examples is present in `tests/test_examples.py`
 
-Given some collections and data objects already in iRODS ...
-
 ### Collections
 
 To make an object representing a collection, pass a string or `os.PathLike`
