@@ -1,4 +1,4 @@
-click==8.1.7
+click==8.2.0
 python-dateutil==2.9.0.post0
 setuptools==80.3.1
 setuptools_git_versioning==2.1.0
