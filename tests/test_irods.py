@@ -914,6 +914,20 @@ class TestCollection:
             )
             assert item.acl() == expected, "Collection content ACL updated"
 
+    @m.context("When a Collection is put from a local path that is not a directory")
+    @m.it("Raises an error")
+    def test_put_collection_no_path(self, tmp_path, simple_collection):
+        coll = Collection(simple_collection / "sub")
+
+        with pytest.raises(FileNotFoundError):
+            next(coll.put(Path("./tests/data/no/such/path").absolute()))
+
+        tmpfile = tmp_path / "test.txt"
+        tmpfile.write_text("test")
+
+        with pytest.raises(ValueError, match="not a directory"):
+            next(coll.put(tmpfile))
+
     @m.context("When a Collection does not exist and is put non-recursively")
     @m.it("Is created, with its immediate contents")
     def test_put_collection(self, simple_collection):

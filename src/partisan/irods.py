@@ -2931,14 +2931,18 @@ class Collection(RodsItem):
         Returns:
             A generator over the collection and contents.
         """
-        if not Path(local_path).is_dir():
-            raise ValueError(f"Local path '{local_path}' is not a directory")
 
         def _handle_exception(e):
             if yield_exceptions:
                 yield e
             else:
                 raise e
+
+        try:
+            if not Path(local_path).resolve(strict=True).is_dir():
+                raise ValueError(f"Local path '{local_path}' is not a directory")
+        except Exception as e:
+            yield from _handle_exception(e)
 
         try:
             yield self.create(exist_ok=True, timeout=timeout, tries=tries)
