@@ -2943,6 +2943,7 @@ class Collection(RodsItem):
                 raise ValueError(f"Local path '{local_path}' is not a directory")
         except Exception as e:
             yield from _handle_exception(e)
+            return
 
         try:
             yield self.create(exist_ok=True, timeout=timeout, tries=tries)
@@ -3002,8 +3003,12 @@ class Collection(RodsItem):
                         yield from _handle_exception(e)
         else:
             dirs, files = [], []
-            for p in Path(local_path).iterdir():
-                dirs.append(p) if p.is_dir else files.append(p)
+            try:
+                for p in Path(local_path).iterdir():
+                    dirs.append(p) if p.is_dir else files.append(p)
+            except Exception as e:
+                yield from _handle_exception(e)
+                return
 
             for p in sorted(dirs):
                 try:

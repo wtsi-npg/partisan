@@ -928,6 +928,26 @@ class TestCollection:
         with pytest.raises(ValueError, match="not a directory"):
             next(coll.put(tmpfile))
 
+    @m.context(
+        "When a Collection is put from a local path that is not a directory, with exception yielding"
+    )
+    @m.it("Raises an error")
+    def test_put_collection_no_path_yield_exception(self, tmp_path, simple_collection):
+        coll = Collection(simple_collection / "sub")
+
+        items = [
+            item
+            for item in coll.put(
+                Path(
+                    "./tests/data/no/such/path",
+                ).absolute(),
+                yield_exceptions=True,
+            )
+        ]
+
+        assert len(items) == 1
+        assert isinstance(items[0], FileNotFoundError)
+
     @m.context("When a Collection does not exist and is put non-recursively")
     @m.it("Is created, with its immediate contents")
     def test_put_collection(self, simple_collection):
