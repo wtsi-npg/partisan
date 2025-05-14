@@ -21,6 +21,7 @@
 import hashlib
 import json
 import os.path
+from csv import excel
 from datetime import datetime, timezone
 from pathlib import Path, PurePath
 
@@ -953,8 +954,6 @@ class TestCollection:
         ignore = DataObject(child.path / ".gitignore")
 
         assert items == [coll, sub1, sub2, child, ignore, empty, lorem, utf8]
-
-        assert coll.exists()
         assert coll.contents() == [sub1, sub2]
         assert sub1.contents() == [child]
         assert child.contents() == [ignore]
@@ -971,7 +970,7 @@ class TestCollection:
 
     @m.context("When a Collection does not exist and is put recursively")
     @m.it("Collection paths can be pruned by providing a filter predicate")
-    def test_put_collection_filter(self, simple_collection):
+    def test_put_collection_filter_coll(self, simple_collection):
         coll = Collection(simple_collection / "sub")
         assert not coll.exists()
 
@@ -992,14 +991,12 @@ class TestCollection:
         child = Collection(sub1.path / "child")
 
         assert items == [coll, sub1, child]
-
-        assert coll.exists()
         assert coll.contents() == [sub1]
         assert sub1.contents() == [child]
 
     @m.context("When a Collection does not exist and is put recursively")
     @m.it("Data object paths can be skipped by providing a filter predicate")
-    def test_put_collection_filter(self, simple_collection):
+    def test_put_collection_filter_obj(self, simple_collection):
         coll = Collection(simple_collection / "sub")
         assert not coll.exists()
 
@@ -1028,6 +1025,91 @@ class TestCollection:
 
         assert coll.exists()
         assert sub2.contents() == [lorem, utf8]
+
+    @m.context("When a Collection does not exist and is put recursively")
+    @m.it("Errors cause an exception to be raised by default, stopping the generator")
+    def test_put_collection_raise_except(self, simple_collection):
+        coll = Collection(simple_collection / "sub")
+        assert not coll.exists()
+
+        def raise_error_filter(path):
+            if path.name == "empty.txt":
+                raise ValueError("This is an artificial error")
+            return False
+
+        local_path = Path("./tests/data/simple").absolute()
+
+        items = []
+
+        with pytest.raises(ValueError, match="This is an artificial error"):
+            gen = coll.put(
+                local_path,
+                recurse=True,
+                verify_checksum=True,
+                filter_fn=raise_error_filter,
+            )
+            try:
+                for item in gen:
+                    items.append(item)
+            finally:
+                gen.close()
+
+        # The generator stops at the error on "empty.txt", but will yield earlier items
+        sub1 = Collection(coll.path / "collection")
+        sub2 = Collection(coll.path / "data_object")
+        child = Collection(sub1.path / "child")
+        ignore = DataObject(child.path / ".gitignore")
+
+        assert items == [coll, sub1, sub2, child, ignore]
+        for item in items:
+            assert item.exists()
+
+    @m.context("When a Collection does not exist and is put recursively")
+    @m.it("Errors cause an exceptions to be yielded, when requested")
+    def test_put_collection_yield_except(self, simple_collection):
+        coll = Collection(simple_collection / "sub")
+        assert not coll.exists()
+
+        def raise_error_filter(path):
+            if path.suffix == ".txt":
+                raise ValueError("This is an artificial error")
+            return False
+
+        local_path = Path("./tests/data/simple").absolute()
+        items = []
+        exceptions = []
+
+        gen = coll.put(
+            local_path,
+            recurse=True,
+            verify_checksum=True,
+            filter_fn=raise_error_filter,
+            yield_exceptions=True,
+        )
+        try:
+            for item in gen:
+                match item:
+                    case Exception():
+                        exceptions.append(item)
+                    case _:
+                        items.append(item)
+        finally:
+            gen.close()
+
+        # The generator yields exceptions for items with names ending in ".txt"
+        sub1 = Collection(coll.path / "collection")
+        sub2 = Collection(coll.path / "data_object")
+        child = Collection(sub1.path / "child")
+        ignore = DataObject(child.path / ".gitignore")
+
+        assert items == [coll, sub1, sub2, child, ignore]
+        for item in items:
+            assert item.exists()
+
+        assert len(exceptions) == 3
+        for e in exceptions:
+            assert isinstance(e, ValueError)
+            assert str(e) == "This is an artificial error"
 
 
 @m.describe("DataObject")
