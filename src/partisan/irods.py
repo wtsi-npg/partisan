@@ -671,6 +671,10 @@ class BatonPool:
             operation times out.
         """
         log.debug(f"Returning a client to the pool: {c}")
+
+        if not c.is_running():
+            log.warn(f"Client returned to the pool is not running: {c}")
+
         self._queue.put(c, timeout=timeout)
 
 
@@ -2876,10 +2880,21 @@ class Collection(RodsItem):
         fill=False,
         filter_fn: callable = lambda _: False,
         force=True,
+        yield_exceptions=False,
         timeout=None,
         tries=1,
-    ) -> Generator[Collection | DataObject, Any, None]:
+    ) -> Generator[Collection | DataObject | Exception, Any, None]:
         """Put the collection into iRODS.
+
+        The returned generator yields the collection and contents as they are created.
+
+        The generator has two modes of error handling. The first (and default) is to
+        raise an exception as soon as an error occurs, terminating the generator. The
+        second is to catch the exception and yield it in place of the affected item.
+        This allows the caller to decide how to handle the error (e.g. by skipping the
+        item). The generator will continue to yield items (and/or further exceptions)
+        until it has finished processing the collection. To enable this behaviour, set
+        the `yield_exceptions` argument to True.
 
         Args:
             local_path: The local path of a directory to put into iRODS at the path
@@ -2909,16 +2924,26 @@ class Collection(RodsItem):
                 exists, the operation is skipped. See DataObject.put() for more
                 information.
             force: Overwrite any data objects already present in iRODS.
+            yield_exceptions: If True, yield exceptions instead of raising them.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
         Returns:
-            The Collection.
+            A generator over the collection and contents.
         """
         if not Path(local_path).is_dir():
             raise ValueError(f"Local path '{local_path}' is not a directory")
 
-        yield self.create(exist_ok=True, timeout=timeout, tries=tries)
+        def _handle_exception(e):
+            if yield_exceptions:
+                yield e
+            else:
+                raise e
+
+        try:
+            yield self.create(exist_ok=True, timeout=timeout, tries=tries)
+        except Exception as e:
+            yield from _handle_exception(e)
 
         if recurse:
             for dirpath, dirnames, filenames in os.walk(local_path, topdown=True):
@@ -2930,22 +2955,70 @@ class Collection(RodsItem):
                 # As topdown is True, we can prune the walk by removing from dirnames
                 # in-place. N.B that we iterate over a shallow copy of dirnames.
                 for d in dirnames[:]:
-                    p = Path(dirpath, d)
+                    try:
+                        p = Path(dirpath, d)
+                        r = PurePath(self.path, p.relative_to(local_path))
+
+                        if filter_fn(p):
+                            log.debug(
+                                "Skipping directory put", local_path=p, remote_path=r
+                            )
+                            dirnames.remove(d)
+                            continue
+
+                        log.debug("Creating collection", local_path=p, remote_path=r)
+                        yield Collection(r, pool=self._pool).create(
+                            exist_ok=True, timeout=timeout
+                        )
+                    except Exception as e:
+                        yield from _handle_exception(e)
+
+                for f in filenames:
+                    try:
+                        p = Path(dirpath, f)
+                        r = PurePath(self.path, p.relative_to(local_path))
+
+                        if filter_fn(p):
+                            log.debug("Skipping file put", local_path=p, remote_path=r)
+                            continue
+
+                        log.debug("Putting data object", local_path=p, remote_path=r)
+                        yield DataObject(r, pool=self._pool).put(
+                            p,
+                            calculate_checksum=calculate_checksum,
+                            verify_checksum=verify_checksum,
+                            local_checksum=local_checksum,
+                            compare_checksums=compare_checksums,
+                            fill=fill,
+                            force=force,
+                            timeout=timeout,
+                            tries=tries,
+                        )
+                    except Exception as e:
+                        yield from _handle_exception(e)
+        else:
+            dirs, files = [], []
+            for p in Path(local_path).iterdir():
+                dirs.append(p) if p.is_dir else files.append(p)
+
+            for p in sorted(dirs):
+                try:
                     r = PurePath(self.path, p.relative_to(local_path))
 
                     if filter_fn(p):
                         log.debug("Skipping directory put", local_path=p, remote_path=r)
-                        dirnames.remove(d)
                         continue
 
                     log.debug("Creating collection", local_path=p, remote_path=r)
                     yield Collection(r, pool=self._pool).create(
                         exist_ok=True, timeout=timeout
                     )
+                except Exception as e:
+                    yield from _handle_exception(e)
 
-                for f in filenames:
-                    p = Path(dirpath, f)
-                    r = PurePath(self.path, p.relative_to(local_path))
+            for p in sorted(files):
+                try:
+                    r = PurePath(self.path, p.name)
 
                     if filter_fn(p):
                         log.debug("Skipping file put", local_path=p, remote_path=r)
@@ -2963,42 +3036,8 @@ class Collection(RodsItem):
                         timeout=timeout,
                         tries=tries,
                     )
-        else:
-            dirs, files = [], []
-            for p in Path(local_path).iterdir():
-                dirs.append(p) if p.is_dir else files.append(p)
-
-            for p in sorted(dirs):
-                r = PurePath(self.path, p.relative_to(local_path))
-
-                if filter_fn(p):
-                    log.debug("Skipping directory put", local_path=p, remote_path=r)
-                    continue
-
-                log.debug("Creating collection", local_path=p, remote_path=r)
-                yield Collection(r, pool=self._pool).create(
-                    exist_ok=True, timeout=timeout
-                )
-
-            for p in sorted(files):
-                r = PurePath(self.path, p.name)
-
-                if filter_fn(p):
-                    log.debug("Skipping file put", local_path=p, remote_path=r)
-                    continue
-
-                log.debug("Putting data object", local_path=p, remote_path=r)
-                yield DataObject(r, pool=self._pool).put(
-                    p,
-                    calculate_checksum=calculate_checksum,
-                    verify_checksum=verify_checksum,
-                    local_checksum=local_checksum,
-                    compare_checksums=compare_checksums,
-                    fill=fill,
-                    force=force,
-                    timeout=timeout,
-                    tries=tries,
-                )
+                except Exception as e:
+                    yield from _handle_exception(e)
 
     def add_permissions(
         self,
