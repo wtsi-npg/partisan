@@ -989,10 +989,12 @@ class TestCollection:
 
         sub1 = Collection(coll.path / "collection")
         child = Collection(sub1.path / "child")
+        ignore = DataObject(child.path / ".gitignore")
 
-        assert items == [coll, sub1, child]
+        assert items == [coll, sub1, child, ignore]
         assert coll.contents() == [sub1]
         assert sub1.contents() == [child]
+        assert child.contents() == [ignore]
 
     @m.context("When a Collection does not exist and is put recursively")
     @m.it("Data object paths can be skipped by providing a filter predicate")
