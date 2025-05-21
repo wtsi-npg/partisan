@@ -27,8 +27,10 @@ import os
 import re
 import subprocess
 import threading
+import time
 from abc import abstractmethod
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -38,6 +40,7 @@ from os import PathLike
 from pathlib import Path, PurePath
 from queue import LifoQueue, Queue
 from threading import Thread
+from time import sleep
 from typing import (
     Annotated,
     Any,
@@ -609,6 +612,7 @@ class BatonPool:
     """A pool of Baton clients."""
 
     def __init__(self, maxsize=4):
+        self.maxsize = maxsize
         self._queue = Queue(maxsize=maxsize)  # Queue is threadsafe anyway
         self._mutex = threading.RLock()  # For managing open/close state
 
@@ -679,7 +683,7 @@ class BatonPool:
 
 
 @contextmanager
-def client_pool(maxsize=4) -> BatonPool:
+def client_pool(maxsize=4) -> Generator[BatonPool, Any, None]:
     """Yields a pool of clients that will be closed automatically when the pool goes
     out of scope.
 
@@ -696,7 +700,7 @@ def client_pool(maxsize=4) -> BatonPool:
 
 
 @contextmanager
-def client(pool: BatonPool, timeout=None) -> Baton:
+def client(pool: BatonPool, timeout=None) -> Generator[Baton, Any, None]:
     """Yields a client from a pool, returning it to the pool automatically when the
     client goes out of scope.
 
@@ -2398,94 +2402,107 @@ class DataObject(RodsItem):
                 provided by the verify_checksum option.
             fill: Fill in a missing data object in iRODS. If the data object already
                 exists, the operation is skipped. That option may be combined with
-                compare_checksums to ensure that the data object is up to date.
-            force: Overwrite any data object already present in iRODS.
+                compare_checksums to ensure that the data object is up to date. This
+                option cannot be used with the force option.
+            force: Overwrite any data object already present in iRODS. This option
+                cannot be used with the fill option.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
         Returns:
             The DataObject.
         """
+        if force and fill:
+            raise ValueError("Cannot use both force and fill options at the same time")
+
+        kwargs = {
+            "calculate_checksum": calculate_checksum,
+            "verify_checksum": verify_checksum,
+            "timeout": timeout,
+            "tries": tries,
+        }
+        plog = log.bind(
+            path=self, prev_version=self.versions[-1] if self.versions else None
+        )
+
+        local_chk = None
+
         if compare_checksums:
             if local_checksum is None:
-                chk = _calculate_local_checksum(local_path)
-                log.info(
-                    "Calculated checksum for file", path=local_path, local_checksum=chk
+                local_chk = _calculate_local_checksum(local_path)
+                plog.info(
+                    "Calculated checksum from local file data",
+                    local_checksum=local_chk,
                 )
             elif callable(local_checksum):
-                chk = local_checksum(local_path)
-                log.info(
-                    "Calculated checksum for file", path=local_path, local_checksum=chk
+                local_chk = local_checksum(local_path)
+                plog.info(
+                    "Obtained checksum from supplied callable",
+                    local_checksum=local_chk,
                 )
             elif isinstance(local_checksum, os.PathLike):
                 with open(local_checksum, "r") as f:
-                    chk = f.read()
-                    log.debug(
-                        "Read checksum from file",
-                        path=local_checksum,
-                        local_checksum=chk,
+                    local_chk = f.read()
+                    plog.info(
+                        "Read pre-calculated checksum from a local file",
+                        local_checksum=local_chk,
                     )
             elif isinstance(local_checksum, str):
-                chk = local_checksum
-                log.info("Using provided checksum", local_checksum=chk)
+                local_chk = local_checksum
+                plog.info("Using provided checksum string", local_checksum=local_chk)
             else:
                 raise ValueError(
-                    f"Invalid type for local_checksum: {type(local_checksum)}; must be "
-                    "a string, a path of a file containing a string, or a callable "
-                    "taking a path of a file and returning a string"
+                    f"Invalid type for local_checksum: '{type(local_checksum)}' "
+                    f"for '{self}'; must be a string, a path of a file containing a"
+                    f" string, or a callable taking a path of a file and "
+                    f"returning a string"
                 )
-            if fill and self.exists() and self.checksum() == chk:
-                log.info(
-                    "Data object already exists in iRODS with matching checksum; skipping",
-                    path=self,
-                    local_checksum=chk,
-                    remote_checksum=self.checksum(),
+
+        def _compare_checksums(msg, _local: str, _remote: str, error=True) -> bool:
+            match = _remote == _local
+            if not match and error:
+                raise ValueError(
+                    f"Checksum mismatch for '{self}': {_remote} != {_local}"
                 )
+            plog.info(msg, local_checksum=_local, remote_checksum=_remote)
+            return match
+
+        if self.exists():
+            if fill:
+                if compare_checksums:
+                    msg = "Data object already exists with matching checksum; skipping"
+                    if _compare_checksums(msg, local_chk, self.checksum(), error=False):
+                        return self
+
+                # Fill can force update only mismatched objects
+                self._put(local_path, force=True, **kwargs)
+
+                remote_chk = self.checksum()
+                if compare_checksums:
+                    _compare_checksums(
+                        "Comparing local and remote checksums", local_chk, remote_chk
+                    )
+
+                plog.info("Updated existing data object", remote_checksum=remote_chk)
+
                 return self
 
-            self._put(
-                local_path,
-                calculate_checksum=calculate_checksum,
-                verify_checksum=verify_checksum,
-                force=force,
-                timeout=timeout,
-                tries=tries,
-            )
-
-            if self.checksum() != chk:
+            if not force:
+                # Note: this is implemented in Python because baton's `put` operation
+                # by design always forces overwriting any existing data object.
                 raise ValueError(
-                    f"Checksum mismatch after put: {self.checksum()} != {chk}"
+                    f"Data object already exists at '{self}' and force is False"
                 )
 
-            log.info(
-                "Added data object to iRODS",
-                path=self,
-                prev_version=self.versions[-1] if self.versions else None,
-                local_checksum=chk,
-                remote_checksum=self.checksum(),
+        self._put(local_path, force=force, **kwargs)
+
+        remote_chk = self.checksum()
+        if compare_checksums:
+            _compare_checksums(
+                "Comparing local and remote checksums", local_chk, remote_chk
             )
 
-            return self
-
-        if fill and self.exists():
-            log.info("Data object already exists in iRODS", path=self)
-            return self
-
-        self._put(
-            local_path,
-            calculate_checksum=calculate_checksum,
-            verify_checksum=verify_checksum,
-            force=force,
-            timeout=timeout,
-            tries=tries,
-        )
-
-        log.info(
-            "Added data object to iRODS",
-            path=self,
-            prev_version=self.versions[-1] if self.versions else None,
-            remote_checksum=self.checksum(),
-        )
+        plog.info("Added new data object", remote_checksum=remote_chk)
 
         return self
 
@@ -2618,6 +2635,7 @@ class DataObject(RodsItem):
             prev = DataObject.Version(self.checksum(), self.modified())
 
         with client(self._pool) as c:
+            log.debug("Putting data object", path=self, client=c)
             c.put(
                 item,
                 Path(local_path),
@@ -2887,6 +2905,9 @@ class Collection(RodsItem):
         """Put the collection into iRODS.
 
         The returned generator yields the collection and contents as they are created.
+        Data objects within each collection are put in parallel using a thread
+        pool. The order of the yielded items is not guaranteed to be the same as the
+        order of the items in the collection.
 
         The generator has two modes of error handling. The first (and default) is to
         raise an exception as soon as an error occurs, terminating the generator. The
@@ -2938,6 +2959,50 @@ class Collection(RodsItem):
             else:
                 raise e
 
+        def _batch_put(path_pairs):
+            def _put_obj(p: Path, r: PurePath):
+                start = time.monotonic()
+                log.debug(
+                    "Started data object",
+                    local_path=p.as_posix(),
+                    remote_path=r.as_posix(),
+                    start=start,
+                )
+
+                obj = DataObject(r, pool=self._pool).put(
+                    p,
+                    calculate_checksum=calculate_checksum,
+                    verify_checksum=verify_checksum,
+                    local_checksum=local_checksum,
+                    compare_checksums=compare_checksums,
+                    fill=fill,
+                    force=force,
+                    timeout=timeout,
+                    tries=tries,
+                )
+                end = time.monotonic()
+                log.debug(
+                    "Completed data object",
+                    local_path=p.as_posix(),
+                    remote_path=r.as_posix(),
+                    start=start,
+                    end=end,
+                    duration=end - start,
+                )
+                return obj
+
+            with ThreadPoolExecutor(
+                thread_name_prefix="partisan.collection.put",
+                max_workers=self._pool.maxsize,
+            ) as executor:
+                futures = [executor.submit(_put_obj, p, r) for p, r in path_pairs]
+
+                for future in as_completed(futures):
+                    try:
+                        yield future.result()
+                    except Exception as e:
+                        yield from _handle_exception(e)
+
         try:
             if not Path(local_path).resolve(strict=True).is_dir():
                 raise ValueError(f"Local path '{local_path}' is not a directory")
@@ -2962,45 +3027,27 @@ class Collection(RodsItem):
                 for d in dirnames[:]:
                     try:
                         p = Path(dirpath, d)
-                        r = PurePath(self.path, p.relative_to(local_path))
-
                         if filter_fn(p):
-                            log.debug(
-                                "Skipping directory put", local_path=p, remote_path=r
-                            )
                             dirnames.remove(d)
                             continue
 
-                        log.debug("Creating collection", local_path=p, remote_path=r)
+                        r = PurePath(self.path, p.relative_to(local_path))
                         yield Collection(r, pool=self._pool).create(
                             exist_ok=True, timeout=timeout
                         )
                     except Exception as e:
                         yield from _handle_exception(e)
 
+                path_pairs = []
                 for f in filenames:
-                    try:
-                        p = Path(dirpath, f)
-                        r = PurePath(self.path, p.relative_to(local_path))
+                    p = Path(dirpath, f)
+                    if filter_fn(p):
+                        continue
 
-                        if filter_fn(p):
-                            log.debug("Skipping file put", local_path=p, remote_path=r)
-                            continue
+                    r = PurePath(self.path, p.relative_to(local_path))
+                    path_pairs.append((p, r))
 
-                        log.debug("Putting data object", local_path=p, remote_path=r)
-                        yield DataObject(r, pool=self._pool).put(
-                            p,
-                            calculate_checksum=calculate_checksum,
-                            verify_checksum=verify_checksum,
-                            local_checksum=local_checksum,
-                            compare_checksums=compare_checksums,
-                            fill=fill,
-                            force=force,
-                            timeout=timeout,
-                            tries=tries,
-                        )
-                    except Exception as e:
-                        yield from _handle_exception(e)
+                yield from _batch_put(path_pairs)
         else:
             dirs, files = [], []
             try:
@@ -3010,43 +3057,27 @@ class Collection(RodsItem):
                 yield from _handle_exception(e)
                 return
 
-            for p in sorted(dirs):
+            for d in sorted(dirs):
+                if filter_fn(d):
+                    continue
+
+                r = PurePath(self.path, d.relative_to(local_path))
                 try:
-                    r = PurePath(self.path, p.relative_to(local_path))
-
-                    if filter_fn(p):
-                        log.debug("Skipping directory put", local_path=p, remote_path=r)
-                        continue
-
-                    log.debug("Creating collection", local_path=p, remote_path=r)
                     yield Collection(r, pool=self._pool).create(
                         exist_ok=True, timeout=timeout
                     )
                 except Exception as e:
                     yield from _handle_exception(e)
 
+            path_pairs = []
             for p in sorted(files):
-                try:
-                    r = PurePath(self.path, p.name)
+                if filter_fn(p):
+                    continue
 
-                    if filter_fn(p):
-                        log.debug("Skipping file put", local_path=p, remote_path=r)
-                        continue
+                r = PurePath(self.path, p.name)
+                path_pairs.append((p, r))
 
-                    log.debug("Putting data object", local_path=p, remote_path=r)
-                    yield DataObject(r, pool=self._pool).put(
-                        p,
-                        calculate_checksum=calculate_checksum,
-                        verify_checksum=verify_checksum,
-                        local_checksum=local_checksum,
-                        compare_checksums=compare_checksums,
-                        fill=fill,
-                        force=force,
-                        timeout=timeout,
-                        tries=tries,
-                    )
-                except Exception as e:
-                    yield from _handle_exception(e)
+            yield from _batch_put(path_pairs)
 
     def add_permissions(
         self,
