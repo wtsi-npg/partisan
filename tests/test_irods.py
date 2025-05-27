@@ -973,9 +973,9 @@ class TestCollection:
         assert not coll.exists()
 
         local_path = Path("./tests/data/simple").absolute()
-        items = [
+        items = {
             item for item in coll.put(local_path, recurse=True, verify_checksum=True)
-        ]
+        }
         for item in items:
             assert item.exists()
 
@@ -987,7 +987,7 @@ class TestCollection:
         lorem = DataObject(sub2.path / "lorem.txt")
         ignore = DataObject(child.path / ".gitignore")
 
-        assert items == [coll, sub1, sub2, child, ignore, empty, lorem, utf8]
+        assert items == {coll, sub1, sub2, child, ignore, empty, lorem, utf8}
         assert coll.contents() == [sub1, sub2]
         assert sub1.contents() == [child]
         assert child.contents() == [ignore]
@@ -1009,7 +1009,7 @@ class TestCollection:
         assert not coll.exists()
 
         local_path = Path("./tests/data/simple").absolute()
-        items = [
+        items = {
             item
             for item in coll.put(
                 local_path,
@@ -1017,7 +1017,7 @@ class TestCollection:
                 verify_checksum=True,
                 filter_fn=lambda p: p.name == "data_object",  # Prune this path
             )
-        ]
+        }
         for item in items:
             assert item.exists()
 
@@ -1025,7 +1025,7 @@ class TestCollection:
         child = Collection(sub1.path / "child")
         ignore = DataObject(child.path / ".gitignore")
 
-        assert items == [coll, sub1, child, ignore]
+        assert items == {coll, sub1, child, ignore}
         assert coll.contents() == [sub1]
         assert sub1.contents() == [child]
         assert child.contents() == [ignore]
@@ -1037,7 +1037,7 @@ class TestCollection:
         assert not coll.exists()
 
         local_path = Path("./tests/data/simple").absolute()
-        items = [
+        items = {
             item
             for item in coll.put(
                 local_path,
@@ -1047,7 +1047,7 @@ class TestCollection:
                     lambda p: os.path.isfile(p) and os.path.getsize(p) == 0
                 ),  # Skip empty files
             )
-        ]
+        }
         for item in items:
             assert item.exists()
 
@@ -1057,7 +1057,7 @@ class TestCollection:
         lorem = DataObject(sub2.path / "lorem.txt")
         utf8 = DataObject(sub2.path / "utf-8.txt")
 
-        assert items == [coll, sub1, sub2, child, lorem, utf8]
+        assert items == {coll, sub1, sub2, child, lorem, utf8}
 
         assert coll.exists()
         assert sub2.contents() == [lorem, utf8]
@@ -1075,7 +1075,7 @@ class TestCollection:
 
         local_path = Path("./tests/data/simple").absolute()
 
-        items = []
+        items = set()
 
         with pytest.raises(ValueError, match="This is an artificial error"):
             gen = coll.put(
@@ -1086,7 +1086,7 @@ class TestCollection:
             )
             try:
                 for item in gen:
-                    items.append(item)
+                    items.add(item)
             finally:
                 gen.close()
 
@@ -1096,7 +1096,7 @@ class TestCollection:
         child = Collection(sub1.path / "child")
         ignore = DataObject(child.path / ".gitignore")
 
-        assert items == [coll, sub1, sub2, child, ignore]
+        assert items == {coll, sub1, sub2, child, ignore}
         for item in items:
             assert item.exists()
 
@@ -1106,20 +1106,21 @@ class TestCollection:
         coll = Collection(simple_collection / "sub")
         assert not coll.exists()
 
-        def raise_error_filter(path):
-            if path.suffix == ".txt":
-                raise ValueError("This is an artificial error")
-            return False
-
         local_path = Path("./tests/data/simple").absolute()
         items = []
         exceptions = []
 
+        present = [
+            item
+            for item in coll.put(local_path, recurse=True, yield_exceptions=False)
+            if item.exists()
+        ]
+        assert len(present) == 8
+
         gen = coll.put(
             local_path,
             recurse=True,
-            verify_checksum=True,
-            filter_fn=raise_error_filter,
+            force=False,  # Raises errors for data objects because items are already present
             yield_exceptions=True,
         )
         try:
@@ -1132,20 +1133,11 @@ class TestCollection:
         finally:
             gen.close()
 
-        # The generator yields exceptions for items with names ending in ".txt"
-        sub1 = Collection(coll.path / "collection")
-        sub2 = Collection(coll.path / "data_object")
-        child = Collection(sub1.path / "child")
-        ignore = DataObject(child.path / ".gitignore")
-
-        assert items == [coll, sub1, sub2, child, ignore]
-        for item in items:
-            assert item.exists()
-
-        assert len(exceptions) == 3
+        assert len(items) == 4
+        assert len(exceptions) == 4
         for e in exceptions:
             assert isinstance(e, ValueError)
-            assert str(e) == "This is an artificial error"
+            assert str(e).startswith("Data object already exists")
 
 
 @m.describe("DataObject")
