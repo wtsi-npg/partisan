@@ -20,8 +20,6 @@
 
 import json
 import os
-import re
-import shlex
 import subprocess
 from io import StringIO
 from pathlib import Path, PurePath
@@ -33,23 +31,50 @@ from partisan.exception import RodsError
 log = get_logger()
 
 
+import re
+
+
+def _bs_escape(s: str) -> str:
+    """Escape all bash special characters in a string using backslash quoting."""
+    # The regex pattern matches:
+    # - `\\` : Backslash
+    # - `\'` : Single quote
+    # - `\"` : Double quote
+    # - `$`  : Dollar sign
+    # - `` ` `` : Backtick
+    # - ` `  : Space
+    # - `&`  : Ampersand
+    # - `|`  : Pipe
+    # - `;`  : Semicolon
+    # - `<`  : Less-than
+    # - `>`  : Greater-than
+    # - `*`  : Asterisk
+    # - `?`  : Question mark
+    # - `~`  : Tilde
+    # - `#`  : Hash
+    # - `(`  : Open parenthesis
+    # - `)`  : Close parenthesis
+    # - `!`  : Exclamation mark
+    return re.sub(r"([\\\'\"$` &|;<>*?~#()!])", r"\\\1", s)
+
+
 def mkgroup(name: str):
-    cmd = ["iadmin", "mkgroup", name]
+    cmd = ["iadmin", "mkgroup", _bs_escape(name)]
     _run(cmd)
 
 
 def rmgroup(name: str):
-    cmd = ["iadmin", "rmgroup", name]
+    cmd = ["iadmin", "rmgroup", _bs_escape(name)]
     _run(cmd)
 
 
 def mkuser(name: str):
-    cmd = ["iadmin", "mkuser", name, "rodsuser"]
+    cmd = ["iadmin", "mkuser", _bs_escape(name), "rodsuser"]
     _run(cmd)
 
 
 def rmuser(name: str):
-    cmd = ["iadmin", "rmuser", name]
+    cmd = ["iadmin", "rmuser", _bs_escape(name)]
     _run(cmd)
 
 
@@ -80,7 +105,7 @@ def user_exists(name: str) -> bool:
 def iuserinfo(name: str = None) -> str:
     cmd = ["iuserinfo"]
     if name is not None:
-        cmd.append(name)
+        cmd.append(_bs_escape(name))
     log.debug("Running command", cmd=cmd)
 
     completed = subprocess.run(cmd, capture_output=True)
@@ -95,7 +120,7 @@ def imkdir(remote_path: PurePath | str, make_parents=True):
     if make_parents:
         cmd.append("-p")
 
-    cmd.append(remote_path)
+    cmd.append(_bs_escape(str(remote_path)))
     _run(cmd)
 
 
@@ -137,7 +162,7 @@ def iinit():
     else:
         log.info("Creating a new iRODS auth file", auth_path=auth_path)
 
-    password = shlex.quote(password)
+    password = _bs_escape(password)
     cmd = ["/bin/sh", "-c", f"echo {password} | iinit"]
     _run(cmd)
 
@@ -157,8 +182,8 @@ def iget(
     if recurse:
         cmd.append("-r")
 
-    cmd.append(remote_path)
-    cmd.append(local_path)
+    cmd.append(_bs_escape(str(remote_path)))
+    cmd.append(_bs_escape(str(local_path)))
     _run(cmd)
 
 
@@ -177,8 +202,8 @@ def iput(
     if recurse:
         cmd.append("-r")
 
-    cmd.append(local_path)
-    cmd.append(remote_path)
+    cmd.append(_bs_escape(str(local_path)))
+    cmd.append(_bs_escape(str(remote_path)))
     _run(cmd)
 
 
@@ -189,7 +214,7 @@ def irm(remote_path: PurePath | str, force=False, recurse=False):
     if recurse:
         cmd.append("-r")
 
-    cmd.append(remote_path)
+    cmd.append(_bs_escape(str(remote_path)))
 
     # Workaround for iRODS 4.2.7 which insists on raising errors with when the target is
     # absent, even when -f is used. This should be silent for a missing target.
@@ -203,7 +228,14 @@ def irm(remote_path: PurePath | str, force=False, recurse=False):
 
 
 def itrim(remote_path: PurePath | str, replica_num: int, min_replicas=2):
-    cmd = ["itrim", "-n", f"{replica_num}", "-N", f"{min_replicas}", remote_path]
+    cmd = [
+        "itrim",
+        "-n",
+        f"{replica_num}",
+        "-N",
+        f"{min_replicas}",
+        _bs_escape(str(remote_path)),
+    ]
     _run(cmd)
 
 
@@ -222,8 +254,8 @@ def icp(
     if recurse:
         cmd.append("-r")
 
-    cmd.append(from_path)
-    cmd.append(to_path)
+    cmd.append(_bs_escape(str(from_path)))
+    cmd.append(_bs_escape(str(to_path)))
     _run(cmd)
 
 
@@ -255,10 +287,11 @@ def iquest(*args) -> str:
     raise RodsError(completed.stderr.decode("utf-8").strip())
 
 
-def has_specific_sql(alias) -> bool:
+def has_specific_sql(alias: str) -> bool:
     """Return True if iRODS has a specific query installed under the alias."""
-    existing = iquest("--sql", "ls")
+    alias = _bs_escape(alias)
 
+    existing = iquest("--sql", "ls")
     with StringIO(existing) as reader:
         return any(line.strip() == alias for line in reader)
 
@@ -273,15 +306,19 @@ def have_admin() -> bool:
         return False
 
 
-def add_specific_sql(alias, sql):
+def add_specific_sql(alias: str, sql: str):
     """Add a specific query under the alias, if the alias is not already used."""
+    alias = _bs_escape(alias)
+
     if not has_specific_sql(alias):
         cmd = ["iadmin", "asq", sql, alias]
         _run(cmd)
 
 
-def remove_specific_sql(alias):
+def remove_specific_sql(alias: str):
     """Remove any specific query under the alias, if present."""
+    alias = _bs_escape(alias)
+
     if has_specific_sql(alias):
         cmd = ["iadmin", "rsq", alias]
         _run(cmd)
