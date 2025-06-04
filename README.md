@@ -239,10 +239,10 @@ methods.
 
 ### Pools
 
-`partisan` uses a small pool (the default is 4) of `BatonClient` instances to
-serve requests. This pool is created automatically and is passed to the
-constructors of `Collection`s and `DataObject`s by default. If you would like
-an alternative client management strategy, you can do this by creating your
+`partisan` uses a small pool of `BatonClient` instances to serve requests
+(the default number is 4). This pool is created automatically and is passed to
+the constructors of `Collection`s and `DataObject`s by default. If you would
+like an alternative client management strategy, you can do this by creating your
 own pool.
 
 Let's create a `Collection` using the default pool.
@@ -251,12 +251,84 @@ Let's create a `Collection` using the default pool.
 
 Now let's create a `Collection` using a pool which contains only one
 `BatonClient`. `partisan` provides a context manager to help with this. When a
-pool goes out of scope it will automatically be closed, stopping any
+pool goes out of scope, it will automatically be closed, stopping any
 `BatonClient`s within it and terminating any `baton-do` processes they may
 have started.
 
         with client_pool(maxsize=1) as pool:
             coll = Collection(ont_gridion, pool=pool)
+
+#### Multithreading
+
+`partisan`'s client pool is thread-safe, so a set of data objects and/or collections
+can be processed concurrently by distributing them across a pool of threads
+created with e.g. a `ThreadPoolExecutor`. If each of the data objects and/or
+collections has the same client pool (set in the constructor), then the threads will
+share the same pool of clients, taking and returning clients as needed. The numbers
+of threads and clients should be roughly equal, which you can ensure by setting
+the `max_workers` of the thread pool to the same value as the `maxsize` of the client
+pool.
+
+Both the `contents` and `iter_contents` methods of a `Collection` automatically
+set the client pool attribute of the returned items to the same pool as the root
+collection on which the method is called. The returned item could then be passed
+to a thread pool to process concurrently. E.g.:
+
+      def process_item(item):
+          item.add_permissions(*my_acl)
+
+      with client_pool(maxsize=4) as pool:
+          coll = Collection(remote_path, pool=pool)
+          
+          with ThreadPoolExecutor(max_workers=4) as executor:
+              # Here items returned by `iter_contents` and passed to the
+              # `process_item` function will automatically share coll's
+              # client pool.
+              executor.map(process_item, coll.iter_contents(recurse=True))
+
+The methods `put`, `add_permissions`, `remove_permissions`, and
+`supersede_permissions` of `Collection`, automatically create and use their own
+local ThreadPools internally to process the contents. These transient, internal
+pools set their max_workers to the maxsize of the called collection's pool.
+
+If you attempt multiple, concurrent, recursive operations on the same root
+collection, the total number of threads contending for the shared client pool
+will be a multiple of the number of clients available in the pool. This is
+likely to reduce performance.
+
+E.g. If `iter_contents` returns collections and `process_item` calls
+`add_permissions` on the contents of each, you could see up to 4 x 4 = 16
+(client pool maxsize x thread pool max_workers) threads contending for the
+pool of 4 clients:
+
+      def process_item(item):
+          if item.rods_type == partisan.irods.Collection:
+             item.add_permissions(*my_acl, recurse=True)
+          else:
+              item.add_permissions(*my_acl)
+
+      with client_pool(maxsize=4) as pool:
+          coll = Collection(remote_path, pool=pool)
+          
+          with ThreadPoolExecutor(max_workers=4) as executor:
+              executor.map(process_item, coll.iter_contents(recurse=False))
+
+To manage this issue, you can create a copy of the Collection(s) you wish to
+work with concurrently and set their client pool in the constructor to a new pool
+containing additional clients. E.g.:
+
+      def process_item(item):
+          if item.rods_type == partisan.irods.Collection:
+              with client_pool(maxsize=4) as local_pool:
+                  Collection(item.path, pool=local_pool).add_permissions(*my_acl, recurse=True)
+          else:
+              item.add_permissions(*my_acl)
+
+      with client_pool(maxsize=4) as pool:
+          coll = Collection(remote_path, pool=pool)
+          
+          with ThreadPoolExecutor(max_workers=4) as executor:
+              executor.map(process_item, coll.iter_contents(recurse=False))
 
 ### Timeouts
 

@@ -18,7 +18,7 @@
 #
 # @author Keith James <kdj@sanger.ac.uk>
 
-from __future__ import annotations  # Will not be needed in Python 3.10
+from __future__ import annotations
 
 import atexit
 import hashlib
@@ -40,7 +40,6 @@ from os import PathLike
 from pathlib import Path, PurePath
 from queue import LifoQueue, Queue
 from threading import Thread
-from time import sleep
 from typing import (
     Annotated,
     Any,
@@ -1415,6 +1414,7 @@ def rods_path_type(
                     return Collection
                 case [item]:
                     raise ValueError(f"Failed to recognised client response '{item}'")
+            return None
     except RodsError as e:
         if e.code == -310000:  # iRODS error code for path not found
             return None
@@ -1567,7 +1567,7 @@ class RodsItem(PathLike):
 
         Args:
             *attributes: One or more attributes to test. If any of these are not strings,
-               their string representations is used.
+               their string representation is used.
             ancestors: Include metadata collated from ancestor collections.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
@@ -1582,7 +1582,7 @@ class RodsItem(PathLike):
 
     @rods_type_check
     def add_metadata(self, *avus: AVU, timeout=None, tries=1) -> int:
-        """Add AVUs to the item's metadata, if they are not already present.
+        """Add AVUs to the item's metadata if they are not already present.
         Return the number of AVUs added.
 
         Args:
@@ -1957,15 +1957,15 @@ class RodsItem(PathLike):
             raise BatonError(f"{Baton.ACCESS} key missing from {item}")
 
         # iRODS ACL queries can sometimes return multiple results where a user appears
-        # to have has both "own" and "read" permissions simultaneously. Since "own"
-        # subsumes "read" this is confusing and can have unwanted effects e.g. copying
+        # to have both "own" and "read" permissions simultaneously. Since "own"
+        # subsumes "read", this is confusing and can have unwanted effects, e.g. copying
         # permissions from one collection to another will effectively remove "own" if
         # the source collection has both "own" and "read", and the "read" permission
         # is copied after "own". Yes - when copying these permissions to another item,
         # iRODS now treats "own" and "read" are states that cannot be held
         # simultaneously and will delete the first when the second is applied.
         #
-        # The source collection in the cases we observe are created with the iput
+        # The source collection in the cases we observe is created with the iput
         # icommand, the destination collection with the mkdir API call.
         by_user = {}
         for ac in item[Baton.ACCESS]:
@@ -2678,6 +2678,8 @@ class Collection(RodsItem):
     Collection is a PathLike for the iRODS path it represents.
     """
 
+    DEFAULT_FILTER = lambda _: False
+
     @classmethod
     def query_metadata(
         cls,
@@ -2896,11 +2898,11 @@ class Collection(RodsItem):
         local_checksum=None,
         compare_checksums=False,
         fill=False,
-        filter_fn: callable = lambda _: False,
+        filter_fn: callable[[any], bool] = DEFAULT_FILTER,
         force=True,
         yield_exceptions=False,
-        timeout=None,
-        tries=1,
+        timeout: float | None = None,
+        tries: int = 1,
     ) -> Generator[Collection | DataObject | Exception, Any, None]:
         """Put the collection into iRODS.
 
@@ -2992,8 +2994,7 @@ class Collection(RodsItem):
                 return obj
 
             with ThreadPoolExecutor(
-                thread_name_prefix="partisan.collection.put",
-                max_workers=self._pool.maxsize,
+                max_workers=self._pool.maxsize, thread_name_prefix="coll-put"
             ) as executor:
                 futures = [executor.submit(_put_obj, p, r) for p, r in path_pairs]
 
@@ -3083,9 +3084,9 @@ class Collection(RodsItem):
         self,
         *acs: AC,
         recurse=False,
-        filter_fn: callable = lambda _: False,
-        timeout=None,
-        tries=1,
+        filter_fn: callable[any, bool] = DEFAULT_FILTER,
+        timeout: float | None = None,
+        tries: int = 1,
     ) -> int:
         """Add access controls to the collection. Return the number of access
         controls added. If some argument access controls are already present,
@@ -3104,22 +3105,32 @@ class Collection(RodsItem):
         Returns: int
         """
         num_added = super().add_permissions(*acs, timeout=timeout, tries=tries)
-        if recurse:
-            for item in self.iter_contents(recurse=recurse):
-                if filter_fn(item):
-                    log.debug("Skipping permissions add", path=item, acl=acs)
-                    continue
 
-                num_added += item.add_permissions(*acs, timeout=timeout, tries=tries)
+        if recurse:
+
+            def do_add(it) -> int:
+                if filter_fn(it):
+                    log.debug("Skipping permissions add", path=it, acl=acs)
+                    return 0
+                return it.add_permissions(*acs, timeout=timeout, tries=tries)
+
+            with ThreadPoolExecutor(
+                max_workers=self._pool.maxsize,
+                thread_name_prefix="coll-add-permissions",
+            ) as executor:
+                num_added += sum(
+                    executor.map(do_add, self.iter_contents(recurse=recurse))
+                )
+
         return num_added
 
     def remove_permissions(
         self,
         *acs: AC,
         recurse=False,
-        filter_fn: callable = lambda _: False,
-        timeout=None,
-        tries=1,
+        filter_fn: callable[any, bool] = DEFAULT_FILTER,
+        timeout: float | None = None,
+        tries: int = 1,
     ) -> int:
         """Remove access controls from the collection. Return the number of access
         controls removed. If some argument access controls are not present, those
@@ -3139,23 +3150,30 @@ class Collection(RodsItem):
         """
         num_removed = super().remove_permissions(*acs, timeout=timeout, tries=tries)
         if recurse:
-            for item in self.iter_contents(recurse=recurse):
-                if filter_fn(item):
-                    log.debug("Skipping permissions remove", path=item, acl=acs)
-                    continue
 
-                num_removed += item.remove_permissions(
-                    *acs, timeout=timeout, tries=tries
+            def do_remove(it) -> int:
+                if filter_fn(it):
+                    log.debug("Skipping permissions remove", path=it, acl=acs)
+                    return 0
+                return it.remove_permissions(*acs, timeout=timeout, tries=tries)
+
+            with ThreadPoolExecutor(
+                max_workers=self._pool.maxsize,
+                thread_name_prefix="coll-rem-permissions",
+            ) as executor:
+                num_removed += sum(
+                    executor.map(do_remove, self.iter_contents(recurse=recurse))
                 )
+
         return num_removed
 
     def supersede_permissions(
         self,
         *acs: AC,
         recurse=False,
-        filter_fn: callable = lambda _: False,
-        timeout=None,
-        tries=1,
+        filter_fn: callable[any, bool] = DEFAULT_FILTER,
+        timeout: float | None = None,
+        tries: int = 1,
     ) -> tuple[int, int]:
         """Remove all access controls from the collection, replacing them with the
         specified access controls. Return the numbers of access controls
@@ -3176,15 +3194,25 @@ class Collection(RodsItem):
         num_removed, num_added = super().supersede_permissions(
             *acs, timeout=timeout, tries=tries
         )
-        if recurse:
-            for item in self.iter_contents(recurse=recurse):
-                if filter_fn(item):
-                    log.debug("Skipping permissions supersede", path=item, acl=acs)
-                    continue
 
-                nr, na = item.supersede_permissions(*acs, timeout=timeout, tries=tries)
-                num_removed += nr
-                num_added += na
+        if recurse:
+
+            def do_supersede(it) -> tuple[int, int]:
+                if filter_fn(it):
+                    log.debug("Skipping permissions supersede", path=it)
+                    return 0, 0
+                return it.supersede_permissions(*acs, timeout=timeout, tries=tries)
+
+            with ThreadPoolExecutor(
+                max_workers=self._pool.maxsize,
+                thread_name_prefix="coll-super-permissions",
+            ) as executor:
+                for nr, na in executor.map(
+                    do_supersede, self.iter_contents(recurse=recurse)
+                ):
+                    num_removed += nr
+                    num_added += na
+
         return num_removed, num_added
 
     def to_dict(self) -> dict:
