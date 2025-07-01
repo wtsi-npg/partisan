@@ -325,7 +325,10 @@ class Baton:
 
         Args:
             avus: The query, expressed as AVUs.
-            zone: The iRODS zone name.
+            zone: An iRODS zone hint. This can be the name of a zone to search or a path
+                into a zone. If a path is used, results outside of that collection will
+                be removed from any results. If None, results from the current zone
+                will be returned.
             collection: Query collection metadata, default false.
             data_object: Query data object metadata, default false.
             timeout: Operation timeout.
@@ -340,7 +343,8 @@ class Baton:
             args["object"] = True
 
         item = {Baton.AVUS: avus}
-        if zone:
+
+        if zone is not None:
             item[Baton.COLL] = self._zone_hint_to_path(zone)
 
         return self._execute(Baton.METAQUERY, args, item, timeout=timeout, tries=tries)
@@ -741,7 +745,10 @@ def query_metadata(
 
     Args:
         *avus: One or more AVUs to query.
-        zone: Zone hint for the query. Defaults to None (query the current zone).
+         zone: An iRODS zone hint. This can be the name of a zone to search or a path
+            into a zone. If a path is used, results outside of that collection will
+            be removed from any results. If None, results from the current zone
+            will be returned.
         collection: Query the collection namespace. Defaults to True.
         data_object: Query the data object namespace. Defaults to True.
         timeout: Operation timeout in seconds.
@@ -2114,7 +2121,10 @@ class DataObject(RodsItem):
 
         Args:
             *avus: One or more AVUs to query.
-            zone: Zone hint for the query. Defaults to None (query the current zone).
+            zone: An iRODS zone hint. This can be the name of a zone to search or a path
+                into a zone. If a path is used, results outside of that collection will
+                be removed from any results. If None, results from the current zone
+                will be returned.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
             pool: Client pool to use. If omitted, the default pool is used.
@@ -2693,7 +2703,10 @@ class Collection(RodsItem):
 
         Args:
             *avus: AVUs to query.
-            zone: Zone hint for the query. Defaults to None (query the current zone).
+            zone: An iRODS zone hint. This can be the name of a zone to search or a path
+                into a zone. If a path is used, results outside of that collection will
+                be removed from any results. If None, results from the current zone
+                will be returned.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
             pool: Client pool to use. If omitted, the default pool is used.
