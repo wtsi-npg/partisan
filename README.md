@@ -364,7 +364,9 @@ distinguish between these circumstances.
 ## Requirements
 
 - The `baton-do` executable from the [baton](https://github.com/wtsi-npg/baton)
-  iRODS client distribution. Version >=4.3.1 is required.
+  iRODS client distribution. Version >=5.0.2 is required. This is the earliest
+  version that fixes a longstanding bug in handling iRODS creation and modification
+  timestamps of collections and data object.
 - The unit tests use the
   [iRODS client icommands](https://github.com/irods/irods_client_icommands)
   clients. These are not required during normal operation.
