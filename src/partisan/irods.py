@@ -34,7 +34,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from enum import Enum, unique
+from enum import Enum, auto, unique
 from functools import total_ordering, wraps
 from os import PathLike
 from pathlib import Path, PurePath
@@ -315,6 +315,7 @@ class Baton:
     def query_metadata(
         self,
         avus: list[AVU],
+        timestamps: list[Timestamp] | None = None,
         zone=None,
         collection=False,
         data_object=False,
@@ -325,8 +326,11 @@ class Baton:
 
         Args:
             avus: The query, expressed as AVUs.
+            timestamps: A list of timestamps to narrow the search. Each timestamp value
+                and operator is combined into the query (using AND logic, if there are
+                more than one).
             zone: An iRODS zone hint. This can be the name of a zone to search or a path
-                into a zone. If a path is used, results outside of that collection will
+                into a zone. If a path is used, results outside that collection will
                 be removed from any results. If None, results from the current zone
                 will be returned.
             collection: Query collection metadata, default false.
@@ -344,6 +348,8 @@ class Baton:
 
         item = {Baton.AVUS: avus}
 
+        if timestamps is not None:
+            item[Baton.TIMESTAMPS] = timestamps
         if zone is not None:
             item[Baton.COLL] = self._zone_hint_to_path(zone)
 
@@ -375,8 +381,8 @@ class Baton:
         """Get a data object from iRODS.
 
         Args:
-            item: A dictionary representing the item. When serialized as JSON,
-                this must be suitable input for baton-do.
+            item: A dictionary representing the item. When serialised as JSON,
+                this must be a suitable input for baton-do.
             local_path: A local path to create.
             verify_checksum: Verify the data object's checksum on download.
             force: Overwrite any existing file.
@@ -444,7 +450,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-                this must be suitable input for baton-do.
+                this must be a suitable input for baton-do.
             local_path: The path of a file to upload.
             calculate_checksum: Calculate a remote checksum.
             verify_checksum: Verify the remote checksum after upload.
@@ -472,7 +478,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-                this must be suitable input for baton-do.
+                this must be a suitable input for baton-do.
             parents: Create the collection's parents, if necessary.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
@@ -519,7 +525,7 @@ class Baton:
                 "Exhausted all timeouts, stopping client", client=self, tryno=tries
             )
 
-        # By setting a timeout here (0.1 second is arbitrary) we will raise an Empty
+        # By setting a timeout here (0.1 second is arbitrary), we will raise an Empty
         # exception. This shouldn't happen because timeouts are dealt with above.
         response = lifo.get(timeout=0.1)
         return self._unwrap(response)
@@ -733,6 +739,7 @@ default_pool: Annotated[BatonPool, "The default client pool"] = _default_pool_in
 
 def query_metadata(
     *avus: AVU,
+    timestamps: list[Timestamp] | None = None,
     zone=None,
     collection=True,
     data_object=True,
@@ -745,8 +752,11 @@ def query_metadata(
 
     Args:
         *avus: One or more AVUs to query.
-         zone: An iRODS zone hint. This can be the name of a zone to search or a path
-            into a zone. If a path is used, results outside of that collection will
+        timestamps: A list of Timestamp objects to narrow the search. Each timestamp
+            value and operator is combined into the query (using AND logic, if there
+            are more than one).
+        zone: An iRODS zone hint. This can be the name of a zone to search or a path
+            into a zone. If a path is used, results outside that collection will
             be removed from any results. If None, results from the current zone
             will be returned.
         collection: Query the collection namespace. Defaults to True.
@@ -759,7 +769,8 @@ def query_metadata(
     """
     with client(pool) as c:
         result = c.query_metadata(
-            avus,
+            avus=avus,
+            timestamps=timestamps,
             zone=zone,
             collection=collection,
             data_object=data_object,
@@ -770,6 +781,42 @@ def query_metadata(
         items.sort()
 
         return items
+
+
+class Timestamp:
+    """An iRODS path creation or modification timestamp."""
+
+    @unique
+    class Event(Enum):
+        """The types of event marked by timestamps."""
+
+        CREATED = auto()
+        MODIFIED = auto()
+
+    def __init__(
+        self,
+        value: datetime,
+        event: Event = Event.MODIFIED,
+        operator: str = "n>=",
+    ):
+        """Create a new Timestamp instance.
+
+        Args:
+            value: The datetime of the event.
+            event: The type of event.
+            operator: An operator to use when searching for timestamps. Must be one of
+                the timestamp operators used by iRODS (>, <, <=, >=, n>=, n<=, n>, n<).
+                The default is >=.
+        """
+        self.value = value
+        self.event = event
+        self.operator = operator
+
+    def __repr__(self):
+        return (
+            f"<Timestamp {self.value.isoformat(timespec='seconds')}, {self.event.name}, "
+            f"op: '{self.operator}'>"
+        )
 
 
 @unique
@@ -783,7 +830,7 @@ class Permission(Enum):
 
 
 @total_ordering
-class AC(object):
+class AC:
     """AC is an iRODS access control.
 
     ACs may be sorted, where they will be sorted lexically, first by
@@ -855,7 +902,7 @@ class AC(object):
 
 
 @total_ordering
-class AVU(object):
+class AVU:
     """AVU is an iRODS attribute, value, units tuple.
 
     AVUs may be sorted, where they will be sorted lexically, first by
@@ -1124,7 +1171,7 @@ class AVU(object):
 
 
 @total_ordering
-class Replica(object):
+class Replica:
     """An iRODS data object replica.
 
     iRODS may maintain multiple copies of the data backing a data object. Each one of
@@ -1228,7 +1275,7 @@ class Replica(object):
 
 
 @total_ordering
-class User(object):
+class User:
     """An iRODS user.
 
     iRODS represents both individual user accounts and groups of users as "users".
@@ -2112,6 +2159,7 @@ class DataObject(RodsItem):
     def query_metadata(
         cls,
         *avus: AVU,
+        timestamps: list[Timestamp] = None,
         zone=None,
         timeout=None,
         tries=1,
@@ -2121,8 +2169,11 @@ class DataObject(RodsItem):
 
         Args:
             *avus: One or more AVUs to query.
+            timestamps: A list of Timestamp objects to narrow the search. Each timestamp
+                value and operator is combined into the query (using AND logic, if there
+                are more than one).
             zone: An iRODS zone hint. This can be the name of a zone to search or a path
-                into a zone. If a path is used, results outside of that collection will
+                into a zone. If a path is used, results outside that collection will
                 be removed from any results. If None, results from the current zone
                 will be returned.
             timeout: Operation timeout in seconds.
@@ -2134,7 +2185,8 @@ class DataObject(RodsItem):
 
         with client(pool) as c:
             items = c.query_metadata(
-                avus,
+                avus=avus,
+                timestamps=timestamps,
                 zone=zone,
                 collection=False,
                 data_object=True,
@@ -2309,12 +2361,12 @@ class DataObject(RodsItem):
             raise BatonError(f"{Baton.REPLICAS} key missing from {item}")
 
         rep_args = {}
-        for rep_val in item[Baton.REPLICAS]:
-            match rep_val:
+        for rep in item[Baton.REPLICAS]:
+            match rep:
                 case {Baton.NUMBER: n}:
-                    rep_args[n] = rep_val
+                    rep_args[n] = rep
                 case _:
-                    raise BatonError(f"{Baton.NUMBER} key missing from {rep_val}")
+                    raise BatonError(f"{Baton.NUMBER} key missing from {rep}")
 
         # Getting timestamps from baton currently requires a separate call from
         # getting replica information. The JSON property returned is (for two
@@ -2329,20 +2381,19 @@ class DataObject(RodsItem):
         if Baton.TIMESTAMPS not in item:
             raise BatonError(f"{Baton.TIMESTAMPS} key missing from {item}")
 
-        for ts_val in item[Baton.TIMESTAMPS]:
-            if Baton.REPLICAS not in ts_val:
-                raise BatonError(f"{Baton.REPLICAS} key missing from {ts_val}")
-            rep_num = ts_val[Baton.REPLICAS]
+        for ts in item[Baton.TIMESTAMPS]:
+            if Baton.REPLICAS not in ts:
+                raise BatonError(f"{Baton.REPLICAS} key missing from {ts}")
+            rep_num = ts[Baton.REPLICAS]
 
-            match ts_val:
+            match ts:
                 case {Baton.CREATED: t}:
                     rep_args[rep_num][Baton.CREATED] = dateutil.parser.isoparse(t)
                 case {Baton.MODIFIED: t}:
                     rep_args[rep_num][Baton.MODIFIED] = dateutil.parser.isoparse(t)
                 case _:
                     raise BatonError(
-                        f"{Baton.CREATED}/{Baton.MODIFIED} key missing "
-                        f"from {ts_val}"
+                        f"{Baton.CREATED}/{Baton.MODIFIED} key missing " f"from {ts}"
                     )
 
         replicas = [Replica(**args) for args in rep_args.values()]
@@ -2694,6 +2745,7 @@ class Collection(RodsItem):
     def query_metadata(
         cls,
         *avus: AVU,
+        timestamps: list[Timestamp] | None = None,
         zone=None,
         timeout=None,
         tries=1,
@@ -2703,8 +2755,11 @@ class Collection(RodsItem):
 
         Args:
             *avus: AVUs to query.
+            timestamps: A list of Timestamp objects to narrow the search. Each timestamp
+                value and operator is combined into the query (using AND logic, if there
+                are more than one).
             zone: An iRODS zone hint. This can be the name of a zone to search or a path
-                into a zone. If a path is used, results outside of that collection will
+                into a zone. If a path is used, results outside that collection will
                 be removed from any results. If None, results from the current zone
                 will be returned.
             timeout: Operation timeout in seconds.
@@ -2715,7 +2770,8 @@ class Collection(RodsItem):
         """
         with client(pool) as c:
             items = c.query_metadata(
-                avus,
+                avus=avus,
+                timestamps=timestamps,
                 zone=zone,
                 collection=True,
                 data_object=False,
@@ -2888,6 +2944,71 @@ class Collection(RodsItem):
         """
         item = self._list(acl=acl, avu=avu, timeout=timeout, tries=tries).pop()
         return _make_rods_item(item, pool=self._pool)
+
+    def timestamp(self, timeout=None, tries=1) -> datetime:
+        """Return the timestamp of the collection according to the iRODS IES database.
+        This is a synonym of the `modified` method.
+
+        Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns:
+            The collection's modification timestamp.
+        """
+        return self.modified(timeout=timeout, tries=tries)
+
+    @connected
+    def created(self, timeout=None, tries=1) -> datetime:
+        """Return the creation timestamp of the collection according to the
+        iRODS IES database.
+
+        Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns:
+            The collection's creation timestamp.
+        """
+
+        item = self._list(timestamp=True, timeout=timeout, tries=tries).pop()
+        if Baton.TIMESTAMPS not in item:
+            raise BatonError(f"{Baton.TIMESTAMPS} key missing from '{item}'")
+
+        for ts in item[Baton.TIMESTAMPS]:
+            match ts:
+                case {Baton.CREATED: t}:
+                    return dateutil.parser.isoparse(t)
+                case _:
+                    continue
+
+        raise BatonError(f"{Baton.CREATED} key missing from '{item}'")
+
+    @connected
+    def modified(self, timeout=None, tries=1) -> datetime:
+        """Return the modification timestamp of the collection according to the
+        iRODS IES database.
+
+        Args:
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+
+        Returns:
+            The collection's modification timestamp.
+        """
+
+        item = self._list(timestamp=True, timeout=timeout, tries=tries).pop()
+        if Baton.TIMESTAMPS not in item:
+            raise BatonError(f"{Baton.TIMESTAMPS} key missing from '{item}'")
+
+        for ts in item[Baton.TIMESTAMPS]:
+            match ts:
+                case {Baton.MODIFIED: t}:
+                    return dateutil.parser.isoparse(t)
+                case _:
+                    continue
+
+        raise BatonError(f"{Baton.MODIFIED} key missing from '{item}'")
 
     @rods_type_check
     @connected
@@ -3304,6 +3425,17 @@ class BatonJSONEncoder(json.JSONEncoder):
             if o.operator and o.operator != "=":
                 enc[Baton.OPERATOR] = o.operator
 
+            return enc
+
+        if isinstance(o, Timestamp):
+            enc = {Baton.OPERATOR: o.operator}
+
+            ts = o.value.strftime("%Y-%m-%dT%H:%M:%SZ")
+            match o.event:
+                case Timestamp.Event.CREATED:
+                    enc[Baton.CREATED] = ts
+                case Timestamp.Event.MODIFIED:
+                    enc[Baton.MODIFIED] = ts
             return enc
 
         if isinstance(o, Permission):

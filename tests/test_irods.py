@@ -21,7 +21,6 @@
 import hashlib
 import json
 import os.path
-from csv import excel
 from datetime import datetime, timezone
 from pathlib import Path, PurePath
 
@@ -37,6 +36,7 @@ from partisan.irods import (
     Collection,
     DataObject,
     Permission,
+    Timestamp,
     User,
     current_user,
     make_rods_item,
@@ -551,6 +551,21 @@ class TestCollection:
         for actual, expected in zip(iter_contents, expected_list):
             assert str(actual).endswith(expected)
 
+    @m.it("Has a creation timestamp")
+    def test_creation_timestamp(self, simple_collection):
+        coll = Collection(simple_collection)
+        assert isinstance(coll.created(), datetime)
+
+    @m.it("Has a modification timestamp")
+    def test_modification_timestamp(self, simple_collection):
+        coll = Collection(simple_collection)
+        assert isinstance(coll.modified(), datetime)
+
+    @m.it("Has a timestamp equal the modification timestamp")
+    def test_timestamp(self, simple_collection):
+        coll = Collection(simple_collection)
+        assert coll.timestamp() == coll.modified()
+
     @m.it("Can have metadata added")
     def test_meta_add_collection(self, simple_collection):
         coll = Collection(simple_collection)
@@ -610,6 +625,23 @@ class TestCollection:
 
         found = query_metadata(avu, collection=True, zone=coll)
         assert found == [Collection(simple_collection)]
+
+    @m.it("Can be found by timestamp")
+    def test_timestamp_query_collection(self, simple_collection):
+        coll = Collection(simple_collection)
+
+        avu = AVU("abcde", "12345")
+        coll.add_metadata(avu)
+        assert coll.metadata() == [avu]
+
+        le_created = Timestamp(coll.created(), Timestamp.Event.CREATED, operator="n<=")
+
+        found = query_metadata(avu, timestamps=[le_created], collection=True, zone=coll)
+        assert found == [Collection(simple_collection)]
+
+        gt_created = Timestamp(coll.created(), Timestamp.Event.CREATED, operator="n>")
+        found = query_metadata(avu, timestamps=[gt_created], collection=True, zone=coll)
+        assert found == []
 
     @m.context("When a Collection does not exist")
     @m.it("Can be created de novo")
@@ -1411,7 +1443,7 @@ class TestDataObject:
     def test_modification_timestamp(self, simple_data_object):
         obj = DataObject(simple_data_object)
 
-        assert obj.timestamp() == min([o.modified for o in obj.replicas()])
+        assert obj.modified() == min([o.modified for o in obj.replicas()])
 
     @m.it("Has a timestamp equal to the earliest replica modification time")
     def test_timestamp(self, simple_data_object):
