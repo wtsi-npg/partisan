@@ -376,7 +376,7 @@ These tools should be present on the `PATH`, when required.
 ### Running directly on your local machine
 
 To run the tests locally, you will need to have the `irods` clients installed (`icommands`
-and `baton`, which means your local machine must be either be running Linux, or have
+and `baton`, which means your local machine must either be running Linux, or have
 containerised versions of these tools installed and runnable via proxy wrappers of the
 same name, to emulate the Linux environment.
 
