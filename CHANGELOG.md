@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+For more recent changes, see the comprehensive automatically generated changelogs at
+https://github.com/wtsi-npg/partisan/releases
+
+## [2.10.1]
+
+### Fixed
+ - Add test skip for a bug fixed in iRODS 4.3.2
+
+## [2.10.0]
+
+### Added
+ - Support for AVU query operators
+ - *_human iRODS groups to the test fixtures
+
+## [2.9.4]
+
+### Fixed
+ - Raise supersede operations to info level logging 
+
+## [2.9.3]
+
+### Fixed
+ - Fix logger configuration by not caching the logger
+
+## [2.9.2]
+
+### Changed
+ - Use structlog.get_logger() with no arguments
+
+## [2.9.1]
+
+### Changed
+ - Raise logging from supersede_ methods to info level
+
 ## [2.9.0]
 
 ### Added
