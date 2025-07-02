@@ -1691,61 +1691,83 @@ class TestQueryMetadata:
     @m.context("When a Collection has metadata")
     @m.it("Can be queried by that metadata, only returning collections")
     def test_query_meta_collection(self, annotated_collection, annotated_data_object):
-        assert [] == Collection.query_metadata(AVU("no_such_attr1", "no_such_value1"))
-        assert [Collection(annotated_collection)] == Collection.query_metadata(
-            AVU("attr1", "value1")
-        )
-        assert [Collection(annotated_collection)] == Collection.query_metadata(
-            AVU("attr1", "value1"), AVU("attr2", "value2")
-        )
-        assert [Collection(annotated_collection)] == Collection.query_metadata(
-            AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
-        )
-        assert [Collection(annotated_collection)] == Collection.query_metadata(
-            AVU("attr1", "value%", operator="like")
-        )
+        assert Collection.query_metadata(AVU("no_such_attr1", "no_such_value1")) == []
+        assert Collection.query_metadata(AVU("attr1", "value1")) == [
+            Collection(annotated_collection)
+        ]
+        assert Collection.query_metadata(
+            AVU("attr1", "value1"),
+            AVU("attr2", "value2"),
+        ) == [Collection(annotated_collection)]
+        assert Collection.query_metadata(
+            AVU("attr1", "value1"),
+            AVU("attr2", "value2"),
+            AVU("attr3", "value3"),
+        ) == [Collection(annotated_collection)]
+        assert Collection.query_metadata(AVU("attr1", "value%", operator="like")) == [
+            Collection(annotated_collection)
+        ]
 
     @m.describe("Query DataObject namespace")
     @m.context("When a DataObject has metadata")
     @m.it("Can be queried by that metadata, only returning data objects")
     def test_query_meta_data_object(self, annotated_collection, annotated_data_object):
-        assert [] == DataObject.query_metadata(AVU("no_such_attr1", "no_such_value1"))
-        assert [DataObject(annotated_data_object)] == DataObject.query_metadata(
-            AVU("attr1", "value1")
-        )
-        assert [DataObject(annotated_data_object)] == DataObject.query_metadata(
-            AVU("attr1", "value1"), AVU("attr2", "value2")
-        )
-        assert [DataObject(annotated_data_object)] == DataObject.query_metadata(
-            AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
-        )
+        assert DataObject.query_metadata(AVU("no_such_attr1", "no_such_value1")) == []
+        assert DataObject.query_metadata(AVU("attr1", "value1")) == [
+            DataObject(annotated_data_object)
+        ]
+        assert DataObject.query_metadata(
+            AVU("attr1", "value1"),
+            AVU("attr2", "value2"),
+        ) == [DataObject(annotated_data_object)]
+        assert DataObject.query_metadata(
+            AVU("attr1", "value1"),
+            AVU("attr2", "value2"),
+            AVU("attr3", "value3"),
+        ) == [DataObject(annotated_data_object)]
         assert [DataObject(annotated_data_object)] == DataObject.query_metadata(
             AVU("attr1", "value%", operator="like")
         )
 
     @m.describe("Query both DataObject and Collection namespaces")
-    @m.context("When a DataObjects and Collections have metadata")
+    @m.context("When a DataObject and Collections have metadata")
     @m.it("Can be queried by that metadata, returning everything")
     def test_query_meta_all(self, annotated_collection, annotated_data_object):
-        assert [] == query_metadata(AVU("no_such_attr1", "no_such_value1"))
-        assert [
+        assert query_metadata(AVU("no_such_attr1", "no_such_value1")) == []
+        assert query_metadata(AVU("attr1", "value1")) == [
             Collection(annotated_collection),
             DataObject(annotated_data_object),
-        ] == query_metadata(AVU("attr1", "value1"))
-        assert [
+        ]
+        assert query_metadata(AVU("attr1", "value1"), AVU("attr2", "value2")) == [
             Collection(annotated_collection),
             DataObject(annotated_data_object),
-        ] == query_metadata(AVU("attr1", "value1"), AVU("attr2", "value2"))
-        assert [
+        ]
+        assert query_metadata(
+            AVU("attr1", "value1"),
+            AVU("attr2", "value2"),
+            AVU("attr3", "value3"),
+        ) == [
             Collection(annotated_collection),
             DataObject(annotated_data_object),
-        ] == query_metadata(
-            AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
-        )
-        assert [
+        ]
+        assert query_metadata(AVU("attr1", "value%", operator="like")) == [
             Collection(annotated_collection),
             DataObject(annotated_data_object),
-        ] == query_metadata(AVU("attr1", "value%", operator="like"))
+        ]
+
+    @m.context("When a collection is supplied to filter metadata queries")
+    @m.it("Filters results by that collection")
+    def test_query_meta_collection_filter(self, simple_collection):
+        coll = Collection(simple_collection)
+        sub1 = Collection(simple_collection / "sub1").create()
+        sub2 = Collection(simple_collection / "sub2").create()
+
+        avu = AVU("attr1", "value1")
+        sub1.add_metadata(avu)
+
+        assert coll.query_metadata(avu, zone=coll) == [sub1]  # sub1 is a child of coll
+        assert sub1.query_metadata(avu, zone=sub1) == [sub1]
+        assert sub1.query_metadata(avu, zone=sub2) == []  # sub2 is not a child of sub1
 
 
 @m.describe("Test special paths (quotes, spaces)")

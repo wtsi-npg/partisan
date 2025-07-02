@@ -237,6 +237,17 @@ methods.
 
         assert irods.query_metadata(AVU("experiment_id", "experiment%", operator="like")) == [obj]
 
+The `zone` keyword of `query_metadata` is a "zone hint" which, if provided, directs the
+query to a zone other than the local one. If a simple zone name is used, e.g. "otherZone",
+then the query will run there. Alternatively, if a path is used as a zone hint e.g.
+"/otherZone/path/to/a/collection", then not only will the query be run on that zone, but
+any results will be filtered to remove paths outside the hint path's deepest collection.
+
+The local zone may be specified explicitly as a zone hint if desired. A simple zone name
+has no effect, while a path has the same effect as on a remote zone in that it filters
+paths that lie outside its deepest collection.
+
+
 ### Pools
 
 `partisan` uses a small pool of `BatonClient` instances to serve requests
