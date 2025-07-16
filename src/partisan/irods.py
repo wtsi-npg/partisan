@@ -3430,7 +3430,11 @@ class BatonJSONEncoder(json.JSONEncoder):
         if isinstance(o, Timestamp):
             enc = {Baton.OPERATOR: o.operator}
 
-            ts = o.value.strftime("%Y-%m-%dT%H:%M:%SZ")
+            dt = o.value
+            if dt.tzinfo:
+                dt = dt.astimezone(timezone.utc)
+            ts = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
             match o.event:
                 case Timestamp.Event.CREATED:
                     enc[Baton.CREATED] = ts
