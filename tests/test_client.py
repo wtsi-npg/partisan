@@ -19,11 +19,17 @@
 
 from pytest import mark as m
 
-from partisan.irods import Baton
+from partisan.irods import Baton, client_version
 
 
 @m.describe("Baton")
-class TestBatonClient(object):
+class TestBatonClient:
+    @m.context("When queried for its version")
+    @m.it("Returns the client version")
+    def test_client_version(self):
+        version = client_version()
+        assert len(version) == 3
+
     @m.context("When created")
     @m.it("Is not running")
     def test_create_baton_client(self):
