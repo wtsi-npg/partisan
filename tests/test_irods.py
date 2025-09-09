@@ -21,6 +21,7 @@
 import hashlib
 import json
 import os.path
+import re
 from datetime import datetime, timezone
 from pathlib import Path, PurePath
 
@@ -1112,7 +1113,6 @@ class TestCollection:
             return False
 
         local_path = Path("./tests/data/simple").absolute()
-
         items = set()
 
         with pytest.raises(ValueError, match="This is an artificial error"):
@@ -1145,8 +1145,6 @@ class TestCollection:
         assert not coll.exists()
 
         local_path = Path("./tests/data/simple").absolute()
-        items = []
-        exceptions = []
 
         present = [
             item
@@ -1155,6 +1153,7 @@ class TestCollection:
         ]
         assert len(present) == 8
 
+        items, exceptions = [], []
         gen = coll.put(
             local_path,
             recurse=True,
@@ -1174,8 +1173,226 @@ class TestCollection:
         assert len(items) == 4
         assert len(exceptions) == 4
         for e in exceptions:
-            assert isinstance(e, ValueError)
-            assert str(e).startswith("Data object already exists")
+            assert isinstance(e, FileExistsError)
+            assert re.search("object already exists", str(e), re.IGNORECASE)
+
+    @m.context("When a Collection does not exist and is put recursively")
+    @m.it("Can fill in around existing data objects from a previous attempt")
+    def test_put_collection_fill(self, simple_collection):
+        coll = Collection(simple_collection / "sub")
+        assert not coll.exists()
+
+        local_path = Path("./tests/data/simple").absolute()
+        items = {
+            item
+            for item in coll.put(
+                local_path,
+                recurse=True,
+                verify_checksum=True,
+                filter_fn=(lambda p: p.name == "lorem.txt"),  # Omit this
+            )
+        }
+
+        for item in items:
+            assert item.exists()
+        assert len(items) == 7
+        assert "lorem.txt" not in [
+            item.name for item in items if isinstance(item, DataObject)
+        ]
+
+        items = {
+            item
+            for item in coll.put(
+                local_path, fill=True, force=False, recurse=True, verify_checksum=True
+            )
+        }
+
+        assert len(items) == 8
+        assert "lorem.txt" in [
+            item.name for item in items if isinstance(item, DataObject)
+        ]
+
+    @m.context("When a Collection exists and is got non-recursively")
+    @m.it("Is downloaded, with its immediate contents")
+    def test_get_collection(self, tmp_path, full_collection):
+        coll = Collection(full_collection)
+        assert coll.exists()
+
+        items = list(coll.get(tmp_path, recurse=False, verify_checksum=True))
+
+        local_paths = _check_local_paths(tmp_path, coll, items)
+        assert local_paths == [tmp_path]
+
+    @m.context("When a Collection exists and is got recursively")
+    @m.it("Is downloaded, with its recursive contents")
+    def test_get_collection_recur(self, tmp_path, full_collection):
+        coll = Collection(full_collection)
+        assert coll.exists()
+
+        items = list(coll.get(tmp_path, recurse=True, verify_checksum=True))
+
+        local_paths = _check_local_paths(tmp_path, coll, items)
+        assert sorted(local_paths) == [
+            tmp_path / p
+            for p in [
+                ".",
+                "level1",
+                "level1/level2",
+                "level1/level2/leaf1.txt",
+                "level1/level2/leaf2.txt",
+            ]
+        ]
+
+    @m.context("When a Collection exists and is got recursively")
+    @m.it("Collection paths can be pruned by providing a filter predicate")
+    def test_get_collection_filter_coll(self, tmp_path, full_collection):
+        coll = Collection(full_collection)
+        assert coll.exists()
+
+        items = list(
+            coll.get(
+                tmp_path,
+                recurse=True,
+                verify_checksum=True,
+                filter_fn=lambda c: c.path.name == "level2",
+            )
+        )
+
+        local_paths = _check_local_paths(tmp_path, coll, items)
+        assert sorted(local_paths) == [tmp_path / p for p in [".", "level1"]]
+
+    @m.context("When a Collection exists and is got recursively")
+    @m.it("Data object paths can be skipped by providing a filter predicate")
+    def test_get_collection_filter_obj(self, tmp_path, full_collection):
+        coll = Collection(full_collection)
+        assert coll.exists()
+
+        items = list(
+            coll.get(
+                tmp_path,
+                recurse=True,
+                verify_checksum=True,
+                filter_fn=lambda x: isinstance(x, DataObject) and x.name == "leaf1.txt",
+            )
+        )
+
+        local_paths = _check_local_paths(tmp_path, coll, items)
+        assert sorted(local_paths) == [
+            tmp_path / p
+            for p in [
+                ".",
+                "level1",
+                "level1/level2",
+                "level1/level2/leaf2.txt",
+            ]
+        ]
+
+    @m.context("When a Collection exists and is got recursively")
+    @m.it("Errors cause an exception to be raised by default, stopping the generator")
+    def test_get_collection_raise_except(self, tmp_path, full_collection):
+        coll = Collection(full_collection)
+        assert coll.exists()
+
+        def raise_error_filter(x):
+            if isinstance(x, DataObject) and x.name == "leaf1.txt":
+                raise ValueError("This is an artificial error")
+            return False
+
+        items = []
+        with pytest.raises(ValueError, match="This is an artificial error"):
+            gen = coll.get(
+                tmp_path,
+                recurse=True,
+                verify_checksum=True,
+                filter_fn=raise_error_filter,
+            )
+            try:
+                for item in gen:
+                    items.append(item)
+            finally:
+                gen.close()
+
+        local_paths = _check_local_paths(tmp_path, coll, items)
+
+        assert sorted(local_paths) == [
+            tmp_path / p for p in [".", "level1", "level1/level2"]
+        ]
+
+    @m.context("When a Collection exists and is got recursively")
+    @m.it("Errors cause an exceptions to be yielded, when requested")
+    def test_get_collection_yield_except(self, tmp_path, full_collection):
+        coll = Collection(full_collection)
+        assert coll.exists()
+
+        present = list(coll.get(tmp_path, recurse=True, verify_checksum=True))
+        assert len(present) == 5
+
+        items, exceptions = [], []
+        gen = coll.get(
+            tmp_path,
+            recurse=True,
+            force=False,  # Raises errors because local files are already present
+            yield_exceptions=True,
+        )
+        try:
+            for item in gen:
+                match item:
+                    case Exception():
+                        exceptions.append(item)
+                    case _:
+                        items.append(item)
+        finally:
+            gen.close()
+
+        assert len(items) == 3
+        assert len(exceptions) == 2
+        for e in exceptions:
+            assert isinstance(e, FileExistsError)
+            assert re.search("file already exists", str(e), re.IGNORECASE)
+
+    @m.context("When a Collection exists and is got recursively")
+    @m.it("Can fill in around existing data content from a previous attempt")
+    def test_get_collection_fill(self, tmp_path, full_collection):
+        coll = Collection(full_collection)
+        assert coll.exists()
+
+        items = list(
+            coll.get(
+                tmp_path,
+                recurse=True,
+                verify_checksum=True,
+                filter_fn=lambda x: isinstance(x, DataObject) and x.name == "leaf1.txt",
+            )
+        )
+
+        local_paths = _check_local_paths(tmp_path, coll, items)
+        assert sorted(local_paths) == [
+            tmp_path / p
+            for p in [
+                ".",
+                "level1",
+                "level1/level2",
+                "level1/level2/leaf2.txt",
+            ]
+        ]
+
+        items = list(
+            coll.get(
+                tmp_path, recurse=True, verify_checksum=True, force=False, fill=True
+            )
+        )
+
+        local_paths = _check_local_paths(tmp_path, coll, items)
+        assert sorted(local_paths) == [
+            tmp_path / p
+            for p in [
+                ".",
+                "level1",
+                "level1/level2",
+                "level1/level2/leaf1.txt",
+                "level1/level2/leaf2.txt",
+            ]
+        ]
 
 
 @m.describe("DataObject")
@@ -1993,3 +2210,18 @@ class TestJSON:
         assert obj2.name == obj1.name
         assert obj2.metadata() == metadata
         assert obj2.acl() == acl
+
+
+def _check_local_paths(local_root, remote_root, remote_items) -> list[Path]:
+    local_paths = []
+    for r in remote_items:
+        p = local_root / Path(str(r)).relative_to(remote_root)
+        assert p.exists(), f"Local path '{p}' does not exist"
+
+        if isinstance(r, Collection):
+            assert p.is_dir()
+        else:
+            assert p.is_file()
+        local_paths.append(p)
+
+    return local_paths
