@@ -44,13 +44,19 @@ from partisan.irods import (
     rods_path_type,
     rods_user,
     rods_users,
+    server_version,
 )
 
 
-def irods_version():
-    version = os.environ.get("IRODS_VERSION", "4.2.7")
-    [major, minor, patch] = [int(elt) for elt in version.split(".")]
-    return major, minor, patch
+@m.describe("Server")
+class TestServer:
+    @m.context("When queried for its version")
+    @m.it("Returns the server version")
+    def test_server_version(self):
+        version = server_version()
+        assert len(version) == 3
+        assert version >= (4, 2, 0)
+        assert version <= (6, 0, 0)
 
 
 @m.describe("User")
@@ -108,7 +114,7 @@ class TestUser:
     @m.it("Is returned")
     def test_rods_users(self):
         # This gives different results on iRODS servers <4.3.0 and >=4.3.0
-        if irods_version() < (4, 3, 0):
+        if server_version() < (4, 3, 0):
             users = ["rodsadmin", "public", "irods"]
             groups = ["rodsadmin", "public"]
         else:
@@ -1372,8 +1378,8 @@ class TestDataObject:
 
     @m.it("Can have its checksum verified as good")
     @pytest.mark.skipif(
-        irods_version() <= (4, 2, 10),
-        reason=f"requires iRODS server >4.2.10; version is {irods_version()}",
+        server_version() <= (4, 2, 10),
+        reason=f"requires iRODS server >4.2.10; version is {server_version()}",
     )
     def test_verify_checksum_good(self, simple_data_object):
         obj = DataObject(simple_data_object)
@@ -1385,8 +1391,8 @@ class TestDataObject:
 
     @m.it("Can have its checksum verified as bad")
     @pytest.mark.skipif(
-        irods_version() <= (4, 2, 10),
-        reason=f"requires iRODS server >4.2.10; version is {irods_version()}",
+        server_version() <= (4, 2, 10),
+        reason=f"requires iRODS server >4.2.10; version is {server_version()}",
     )
     def test_verify_checksum_bad(self, invalid_checksum_data_object):
         obj = DataObject(invalid_checksum_data_object)
@@ -1397,8 +1403,8 @@ class TestDataObject:
 
     @m.it("Fails checksum verification if it has no checksum")
     @pytest.mark.skipif(
-        irods_version() <= (4, 2, 10),
-        reason=f"requires iRODS server >4.2.10; version is {irods_version()}",
+        server_version() <= (4, 2, 10),
+        reason=f"requires iRODS server >4.2.10; version is {server_version()}",
     )
     def test_verify_checksum_missing(self, simple_collection):
         obj = DataObject(simple_collection / "new.txt")
@@ -1696,8 +1702,8 @@ class TestReplicaManagement:
             obj.trim_replicas(min_replicas=0, valid=True, invalid=False)
 
     @pytest.mark.skipif(
-        irods_version() >= (4, 3, 2),
-        reason=f"fixed in iRODS 4.3.2; version is {irods_version()}",
+        server_version() >= (4, 3, 2),
+        reason=f"fixed in iRODS 4.3.2; version is {server_version()}",
     )
     @m.describe("Data objects with invalid replicas")
     @m.context("When trimming would violate the minimum replica count")

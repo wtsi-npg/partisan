@@ -151,6 +151,14 @@ class Baton:
             )
             return
 
+        version = client_version()
+        if version < (6, 0, 0):
+            ver_str = ".".join(*version)
+            raise BatonError(
+                "This version of partisan requires a baton version >=6.0.0 "
+                f"(detected version '{ver_str}')"
+            )
+
         self._proc = subprocess.Popen(
             [Baton.CLIENT, "--unbuffered", "--no-error", "--silent"],
             bufsize=0,
@@ -211,7 +219,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-                this must be suitable input for baton-do.
+                this must be a suitable input for baton-do.
             acl: Include ACL information in the result.
             avu: Include AVU information in the result.
             checksum: Include checksum information in the result (for a data object).
@@ -261,7 +269,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-                this must be suitable input for baton-do.
+                this must be a suitable input for baton-do.
             calculate_checksum: Ask iRODS to calculate the checksum, if there is no
                 remote checksum currently.
             recalculate_checksum: Ask iRODS to calculate the checksum, even if there
@@ -291,7 +299,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-            this must be suitable input for baton-do.
+            this must be a suitable input for baton-do.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
@@ -360,7 +368,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-                this must be suitable input for baton-do.
+                this must be a suitable input for baton-do.
             recurse: Recursively set permissions on a collection.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
@@ -375,6 +383,7 @@ class Baton:
         local_path: Path,
         verify_checksum=False,
         force=True,
+        redirect=True,
         timeout=None,
         tries=1,
     ) -> int:
@@ -385,33 +394,27 @@ class Baton:
                 this must be a suitable input for baton-do.
             local_path: A local path to create.
             verify_checksum: Verify the data object's checksum on download.
-            force: Overwrite any existing file.
+                Defaults to False.
+            force: Overwrite any existing file. Defaults to True.
+            redirect: Redirect the operation to the best server, decided by iRODS.
+                Defaults to True.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
 
         Returns: The number of bytes downloaded.
         """
-        # TODO: Note that baton does not use rcDataObjGet to get data. It streams the
-        #  file while calculating the MD5 and overwrites existing files without
-        #  warning. Therefore it is similar to using verify_checksum=True,
-        #  force=True. Maybe add an rcDataObjGet mode to benefit from parallel get?
-
-        # Let's be sure users are aware if they try to change these at the moment.
-        if not verify_checksum:
-            raise BatonError(
-                f"{Baton.CLIENT} does not support get without checksum verification"
-            )
-        if not force:
-            raise BatonError(
-                f"{Baton.CLIENT} does not support get without forced overwriting"
-            )
 
         item[Baton.DIR] = local_path.parent
         item[Baton.FILE] = local_path.name
 
         self._execute(
             Baton.GET,
-            {"save": True, "verify": verify_checksum, "force": force},
+            {
+                "save": True,
+                "verify": verify_checksum,
+                "force": force,
+                "redirect": redirect,
+            },
             item,
             timeout=timeout,
             tries=tries,
@@ -423,7 +426,7 @@ class Baton:
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
-                this must be suitable input for baton-do.
+                this must be a suitable input for baton-do.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
 
@@ -443,6 +446,7 @@ class Baton:
         calculate_checksum=False,
         verify_checksum=False,
         force=False,
+        redirect=False,
         timeout=None,
         tries=1,
     ):
@@ -455,6 +459,7 @@ class Baton:
             calculate_checksum: Calculate a remote checksum.
             verify_checksum: Verify the remote checksum after upload.
             force: Overwrite any existing data object.
+            redirect: Redirect the operation to the best server, decided by iRODS.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
@@ -467,6 +472,7 @@ class Baton:
                 "checksum": calculate_checksum,
                 "verify": verify_checksum,
                 "force": force,
+                "redirect": redirect,
             },
             item,
             timeout=timeout,
@@ -995,7 +1001,7 @@ class AVU:
         self._operator = operator
 
     @classmethod
-    def collate(cls, *avus: AVU) -> dict[str : list[AVU]]:
+    def collate(cls, *avus: AVU) -> dict[str, list[AVU]]:
         """Collates AVUs by attribute (including namespace, if any) and
         returns a dict mapping the attribute to a list of AVUs with that
         attribute.
@@ -1394,6 +1400,34 @@ def current_user() -> User:
     Returns: The user's name and their zone.
     """
     return rods_user()
+
+
+def client_version() -> tuple[int, ...]:
+    """Return the baton client version."""
+    completed = subprocess.run(["baton-do", "--version"], capture_output=True)
+    if completed.returncode == 0:
+        version = completed.stdout.decode("utf-8").strip()
+        number = version.split("-", maxsplit=1)
+        if not number:
+            raise BatonError(f"Failed parse client version '{version}")
+
+        return tuple(int(i) for i in number[0].split("."))
+
+    raise BatonError(completed.stderr.decode("utf-8").strip())
+
+
+def server_version() -> tuple[int, ...]:
+    """Return the version reported by the iRODS server."""
+    completed = subprocess.run(["baton-do", "--server-version"], capture_output=True)
+    if completed.returncode == 0:
+        version = completed.stdout.decode("utf-8").strip()
+        number = version.split("-", maxsplit=1)
+        if not number:
+            raise BatonError(f"Failed parse server version '{version}")
+
+        return tuple(int(i) for i in number[0].split("."))
+
+    raise RodsError(completed.stderr.decode("utf-8").strip())
 
 
 def connected(method):
@@ -1952,7 +1986,7 @@ class RodsItem(PathLike):
 
     def collated_metadata(
         self, ancestors=False, timeout=None, tries=1
-    ) -> dict[str:list]:
+    ) -> dict[str, list[str]]:
         """Return a dictionary mapping AVU attributes to lists of corresponding AVU
         values.
 
@@ -1965,7 +1999,7 @@ class RodsItem(PathLike):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: Dict[str:List]
+        Returns: Map of AVU attributes to lists of corresponding AVU values.
         """
         collated = defaultdict(list)
         for avu in self.metadata(ancestors=ancestors, timeout=timeout, tries=tries):
@@ -2432,6 +2466,7 @@ class DataObject(RodsItem):
         compare_checksums=False,
         fill=False,
         force=True,
+        redirect=True,
         timeout=None,
         tries=1,
     ) -> DataObject:
@@ -2448,25 +2483,28 @@ class DataObject(RodsItem):
                 specified by this data object.
             calculate_checksum: Calculate remote checksums for all replicas on the iRODS
                 server after the pu operation. If checksums exist, this is a no-op.
+                Defaults to False.
             verify_checksum: Verify the local checksum calculated by the iRODS C API
                 against the remote checksum calculated by the iRODS server for data
-                objects.
+                objects. Defaults to False.
             local_checksum: A caller-supplied checksum of the local file. This may be a
                 string, a path to a file containing a string, or a file path
                 transformation function. If the latter, it must accept the local path as
                 its only argument and return a string checksum. Typically, this is
                 useful when this checksum is available from an earlier process that
-                calculated it.
+                calculated it. Defaults to None.
             compare_checksums: Compare the local checksum to the remote checksum
                 calculated by the iRODS server after the put operation. If the checksums
                 do not match, raise an error. This is in addition to the comparison
-                provided by the verify_checksum option.
+                provided by the verify_checksum option. Defaults to False.
             fill: Fill in a missing data object in iRODS. If the data object already
                 exists, the operation is skipped. That option may be combined with
                 compare_checksums to ensure that the data object is up to date. This
-                option cannot be used with the force option.
+                option cannot be used with the force option. Defaults to False.
             force: Overwrite any data object already present in iRODS. This option
-                cannot be used with the fill option.
+                cannot be used with the fill option. Defaults to True.
+            redirect: Redirect the operation to the best server, decided by iRODS.
+                Defaults to True.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -2479,6 +2517,7 @@ class DataObject(RodsItem):
         kwargs = {
             "calculate_checksum": calculate_checksum,
             "verify_checksum": verify_checksum,
+            "redirect": redirect,
             "timeout": timeout,
             "tries": tries,
         }
@@ -2686,6 +2725,7 @@ class DataObject(RodsItem):
         calculate_checksum=False,
         verify_checksum=False,
         force=False,
+        redirect=False,
         timeout=None,
         tries=1,
     ) -> DataObject:
@@ -2703,6 +2743,7 @@ class DataObject(RodsItem):
                 calculate_checksum=calculate_checksum,
                 verify_checksum=verify_checksum,
                 force=force,
+                redirect=redirect,
                 timeout=timeout,
                 tries=tries,
             )
@@ -3034,6 +3075,7 @@ class Collection(RodsItem):
         fill=False,
         filter_fn: callable[[any], bool] = DEFAULT_FILTER,
         force=True,
+        redirect=True,
         yield_exceptions=False,
         timeout: float | None = None,
         tries: int = 1,
@@ -3063,25 +3105,29 @@ class Collection(RodsItem):
                 i.e. not be put into iRODS. Filtering directories will result in them
                 being pruned. Filtering files will result in them being skipped.
             calculate_checksum: Calculate remote checksums for all data object replicas.
-                See DataObject.put() for more information.
+                See DataObject.put() for more information. Defaults to False.
             verify_checksum: Verify the local checksum calculated by the iRODS C API
                 against the remote checksum calculated by the iRODS server for data
-                objects. See DataObject.put() for more information.
+                objects. See DataObject.put() for more information. Defaults to False.
             local_checksum: A callable that returns a checksum for a local file. See
                 DataObject.put() for more information. This is called for each file in
                 encountered while recursing, with the file path as its argument.
                 (Also accepts a string or a path to a file containing a string, as does
-                DataObject.put(), however this is not useful for collections except in
-                the edge where all the files have identical contents).
+                DataObject.put(), however, this is not useful for collections except in
+                the edge where all the files have identical contents). Defaults to None.
             compare_checksums: Compare caller-supplied local checksums to the remote
                 checksums calculated by the iRODS server after the put operation for
                 data objects. If the checksums do not match, raise an error. See
-                DataObject.put() for more information.
+                DataObject.put() for more information. Defaults to False.
             fill: Fill in missing data objects in iRODS. If the data object already
                 exists, the operation is skipped. See DataObject.put() for more
                 information.
-            force: Overwrite any data objects already present in iRODS.
+            force: Overwrite any data objects already present in iRODS. Defaults to
+                True.
+            redirect: Redirect the operation to the best server, decided by iRODS.
+                Defaults to True.
             yield_exceptions: If True, yield exceptions instead of raising them.
+                Defaults to False.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
@@ -3113,6 +3159,7 @@ class Collection(RodsItem):
                     compare_checksums=compare_checksums,
                     fill=fill,
                     force=force,
+                    redirect=redirect,
                     timeout=timeout,
                     tries=tries,
                 )
