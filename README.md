@@ -364,9 +364,11 @@ distinguish between these circumstances.
 ## Requirements
 
 - The `baton-do` executable from the [baton](https://github.com/wtsi-npg/baton)
-  iRODS client distribution. Version >=5.0.2 is required. This is the earliest
-  version that fixes a longstanding bug in handling iRODS creation and modification
-  timestamps of collections and data object.
+  iRODS client distribution. For partisan 3.x, `baton` version >=5.0.2 is required.
+  This is the earliest version that fixes a longstanding bug in handling iRODS
+  creation and modification timestamps of collections and data objects.
+  For partisan 4.x, `baton` version >=6.0.0 is required because this version of
+  `baton` introduced new features that are exposed in partisan's API.
 - The unit tests use the
   [iRODS client icommands](https://github.com/irods/irods_client_icommands)
   clients. These are not required during normal operation.
