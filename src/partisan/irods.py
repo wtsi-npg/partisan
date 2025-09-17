@@ -153,7 +153,7 @@ class Baton:
 
         version = client_version()
         if version < (6, 0, 0):
-            ver_str = ".".join(*version)
+            ver_str = ".".join([str(i) for i in version])
             raise BatonError(
                 "This version of partisan requires a baton version >=6.0.0 "
                 f"(detected version '{ver_str}')"
