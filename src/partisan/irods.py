@@ -3429,7 +3429,7 @@ class Collection(RodsItem):
             dirs, files = [], []
             try:
                 for local in Path(local_path).iterdir():
-                    dirs.append(local) if local.is_dir else files.append(local)
+                    dirs.append(local) if local.is_dir() else files.append(local)
             except Exception as e:
                 yield from _handle_exception(e)
                 return
