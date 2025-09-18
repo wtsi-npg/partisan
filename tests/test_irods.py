@@ -1005,9 +1005,13 @@ class TestCollection:
         assert items[1] == Collection(coll.path / "child")
         assert len(items) == 2
 
-    @m.context("When a collection has a top level data object and is put non-recursively")
+    @m.context(
+        "When a collection has a top level data object and is put non-recursively"
+    )
     @m.it("Is created, with its immediate contents")
-    def test_put_collection_top_level_data_object_non_recursive(self, simple_collection):
+    def test_put_collection_top_level_data_object_non_recursive(
+        self, simple_collection
+    ):
         dest = simple_collection / "sub"
         coll = Collection(dest)
         assert not coll.exists()
@@ -1022,7 +1026,6 @@ class TestCollection:
             Collection(dest / "sub"),
             DataObject(dest / "top_level.txt"),
         ]
-
 
     @m.context("When a Collection does not exist and is put recursively")
     @m.it("Is created, with descendants and their contents")
