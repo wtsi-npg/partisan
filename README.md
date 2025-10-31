@@ -237,6 +237,11 @@ methods.
 
         assert irods.query_metadata(AVU("experiment_id", "experiment%", operator="like")) == [obj]
 
+The `IN` operator allows querying for multiple values
+        
+        assert irods.query_metadata(AVU("experiment_id", ["experiment_1", "experiment_2"], operator="in")) == [obj]
+
+
 The `zone` keyword of `query_metadata` is a "zone hint" which, if provided, directs the
 query to a zone other than the local one. If a simple zone name is used, e.g. "otherZone",
 then the query will run there. Alternatively, if a path is used as a zone hint e.g.

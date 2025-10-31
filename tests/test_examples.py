@@ -177,6 +177,12 @@ class TestExamples(object):
             AVU("experiment_id", "experiment%", operator="like")
         ) == [obj]
 
+        # The IN operator allows querying for multiple values
+
+        assert irods.query_metadata(
+            AVU("experiment_id", ["experiment_1", "experiment_2"], operator="in")
+        ) == [obj]
+
     def test_pool_examples(self, ont_gridion):
         # partisan uses a small pool (the default is 4) of BatonClient instances to
         # serve requests. This pool is created automatically and is passed to the

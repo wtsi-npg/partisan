@@ -959,12 +959,17 @@ class AVU:
             operator = "="
 
         attr = str(attribute)
-        value = str(value)
-
         if re.match(r"\s+$", attr):
             raise ValueError("AVU attribute may not be entirely whitespace")
-        if re.match(r"\s+$", value):
-            raise ValueError("AVU value may not be entirely whitespace")
+
+        # If the operator is `IN`, then the value will be a collection, otherwise it is
+        # something to stringify
+        operator = operator.lower()
+        if operator != "in":
+            value = str(value)
+            if re.match(r"\s+$", value):
+                raise ValueError("AVU value may not be entirely whitespace")
+
         if re.match(r"\s+$", namespace):
             raise ValueError("AVU namespace may not be entirely whitespace")
 
