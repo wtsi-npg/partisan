@@ -23,50 +23,52 @@ import structlog
 #
 # "This is the simplest approach where structlog does all the heavy lifting and
 # passes a fully-formatted string to logging."
-structlog.configure(
-    processors=[
-        # If log level is too low, abort pipeline and throw away log entry.
-        structlog.stdlib.filter_by_level,
-        # Add the name of the logger to event dict.
-        structlog.stdlib.add_logger_name,
-        # Add log level to event dict.
-        structlog.stdlib.add_log_level,
-        # Perform %-style formatting.
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        # Add a timestamp in ISO 8601 format.
-        structlog.processors.TimeStamper(fmt="iso"),
-        # If the "stack_info" key in the event dict is true, remove it and
-        # render the current stack trace in the "stack" key.
-        structlog.processors.StackInfoRenderer(),
-        # If the "exc_info" key in the event dict is either true or a
-        # sys.exc_info() tuple, remove "exc_info" and render the exception
-        # with traceback into the "exception" key.
-        structlog.processors.format_exc_info,
-        # If some value is in bytes, decode it to a Unicode str.
-        structlog.processors.UnicodeDecoder(),
-        # Add callsite parameters.
-        structlog.processors.CallsiteParameterAdder(
-            {
-                structlog.processors.CallsiteParameter.FILENAME,
-                structlog.processors.CallsiteParameter.FUNC_NAME,
-                structlog.processors.CallsiteParameter.LINENO,
-            }
-        ),
-        # Render the final event dict as JSON.
-        structlog.processors.JSONRenderer(),
-    ],
-    # `wrapper_class` is the bound logger that you get back from
-    # get_logger(). This one imitates the API of `logging.Logger`.
-    wrapper_class=structlog.stdlib.BoundLogger,
-    # `logger_factory` is used to create wrapped loggers that are used for
-    # OUTPUT. This one returns a `logging.Logger`. The final value (a JSON
-    # string) from the final processor (`JSONRenderer`) will be passed to
-    # the method of the same name as that you've called on the bound logger.
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    # Do not freeze configuration after creating the first bound logger. This lets
-    # the application using this library more easily configure partisans loggers.
-    #
-    # With this set to True, I was unable to change the configuration of the
-    # module-scope loggers when calling the partisan library.
-    cache_logger_on_first_use=False,
-)
+
+if not structlog.is_configured():
+    structlog.configure(
+        processors=[
+            # If log level is too low, abort pipeline and throw away log entry.
+            structlog.stdlib.filter_by_level,
+            # Add the name of the logger to event dict.
+            structlog.stdlib.add_logger_name,
+            # Add log level to event dict.
+            structlog.stdlib.add_log_level,
+            # Perform %-style formatting.
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            # Add a timestamp in ISO 8601 format.
+            structlog.processors.TimeStamper(fmt="iso"),
+            # If the "stack_info" key in the event dict is true, remove it and
+            # render the current stack trace in the "stack" key.
+            structlog.processors.StackInfoRenderer(),
+            # If the "exc_info" key in the event dict is either true or a
+            # sys.exc_info() tuple, remove "exc_info" and render the exception
+            # with traceback into the "exception" key.
+            structlog.processors.format_exc_info,
+            # If some value is in bytes, decode it to a Unicode str.
+            structlog.processors.UnicodeDecoder(),
+            # Add callsite parameters.
+            structlog.processors.CallsiteParameterAdder(
+                {
+                    structlog.processors.CallsiteParameter.FILENAME,
+                    structlog.processors.CallsiteParameter.FUNC_NAME,
+                    structlog.processors.CallsiteParameter.LINENO,
+                }
+            ),
+            # Render the final event dict as JSON.
+            structlog.processors.JSONRenderer(),
+        ],
+        # `wrapper_class` is the bound logger that you get back from
+        # get_logger(). This one imitates the API of `logging.Logger`.
+        wrapper_class=structlog.stdlib.BoundLogger,
+        # `logger_factory` is used to create wrapped loggers that are used for
+        # OUTPUT. This one returns a `logging.Logger`. The final value (a JSON
+        # string) from the final processor (`JSONRenderer`) will be passed to
+        # the method of the same name as that you've called on the bound logger.
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        # Do not freeze configuration after creating the first bound logger. This lets
+        # the application using this library more easily configure partisan's loggers.
+        #
+        # With this set to True, I was unable to change the configuration of the
+        # module-scope loggers when calling the partisan library.
+        cache_logger_on_first_use=False,
+    )
