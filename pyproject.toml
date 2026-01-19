@@ -30,7 +30,7 @@ homepage = "https://github.com/wtsi-npg/partisan"
 repository = "https://github.com/wtsi-npg/partisan.git"
 
 [build-system]
-requires = ["setuptools>=41", "wheel", "setuptools-git-versioning>=2.0,<3"]
+requires = ["setuptools>=41", "wheel", "setuptools-git-versioning>=2.0,<4"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
