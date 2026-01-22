@@ -1672,7 +1672,7 @@ class TestDataObject:
     @m.it("Can have its invalid replicas detected")
     def test_invalid_replica(self, invalid_replica_data_object):
         obj = DataObject(invalid_replica_data_object)
-        (r0, r1) = obj.replicas()
+        r0, r1 = obj.replicas()
         assert r0.valid
         assert not r1.valid
 
