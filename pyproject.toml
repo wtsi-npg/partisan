@@ -20,7 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
-    "black >=24.3.0,<26",
+    "black >=26.0,<27",
     "pytest >=8.0,<10",
     "pytest-it >=0.1.5"
 ]
@@ -30,7 +30,7 @@ homepage = "https://github.com/wtsi-npg/partisan"
 repository = "https://github.com/wtsi-npg/partisan.git"
 
 [build-system]
-requires = ["setuptools>=41", "wheel", "setuptools-git-versioning>=2.0,<4"]
+requires = ["setuptools>=41", "wheel", "setuptools-git-versioning>=3.0,<4"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
