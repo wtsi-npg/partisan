@@ -2636,6 +2636,8 @@ class DataObject(RodsItem):
 
                 # Fill can force update mismatched objects
                 self._put(local_path, force=True, **kwargs)
+                remote_chk = self.checksum()
+
                 if compare_checksums:
                     _compare_checksums(
                         "Comparing local and remote checksums", local_chk, remote_chk
@@ -2680,7 +2682,9 @@ class DataObject(RodsItem):
             return c.read(item, timeout=timeout, tries=tries)
 
     @connected
-    def trim_replicas(self, min_replicas=2, valid=False, invalid=True) -> (int, int):
+    def trim_replicas(
+        self, min_replicas=2, valid=False, invalid=True
+    ) -> tuple[int, int]:
         """Trim excess and invalid replicas of the data object.
 
         Args:
