@@ -3767,7 +3767,14 @@ def _calculate_file_checksum(path: Path | str) -> str:
 
     Returns: The checksum of the file.
     """
-    return hashlib.md5(Path(path).read_bytes()).hexdigest()
+    # Can swap out for hashlib.file_digest (Python 3.11) if/when stop supporting Python 3.10
+    # External md5sum binary not reliably available
+    h = hashlib.md5()
+    chunk_size = 2**20  # 1MB
+    with open(path, "rb") as f:
+        while chunk := f.read(chunk_size):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _local_file_checksum(path: Path | str, checksum_source) -> str:

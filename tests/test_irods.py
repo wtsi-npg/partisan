@@ -48,6 +48,8 @@ from partisan.irods import (
     server_version,
 )
 
+from src.partisan.irods import _calculate_file_checksum
+
 
 @m.describe("Server")
 class TestServer:
@@ -2232,6 +2234,29 @@ class TestJSON:
         assert obj2.name == obj1.name
         assert obj2.metadata() == metadata
         assert obj2.acl() == acl
+
+
+@m.describe("File Checksumming")
+class TestFileChecksumming:
+    @m.context("When calculate checksum of file spanning one chunk")
+    @m.it("Returns checksum matching one independently calculated with md5sum")
+    def test_calculate_file_checksum_one_chunk(self, tmp_path):
+        p = tmp_path / "1K.bin"
+        self._create_nul_file(p, 1024)  # One chunk, partial
+
+        assert _calculate_file_checksum(p) == "0f343b0931126a20f133d67c2b018a3b"
+
+    @m.context("When calculate checksum of file spanning two chunks, one partial")
+    @m.it("Returns checksum matching one independently calculated with md5sum")
+    def test_calculate_file_checksum_two_chunks(self, tmp_path):
+        p = tmp_path / "1025K.bin"
+        self._create_nul_file(p, 1025 * 1024)  # Two chunks, one partial
+
+        assert _calculate_file_checksum(p) == "3d283316360c56857e7c212cfecbbd83"
+
+    def _create_nul_file(self, path: Path, size: int):
+        with path.open("wb") as f:
+            f.write(b"\x00" * size)
 
 
 def _check_local_paths(local_root, remote_root, remote_items) -> list[Path]:
