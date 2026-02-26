@@ -36,6 +36,7 @@ import re
 
 def _bs_escape(s: str) -> str:
     """Escape all bash special characters in a string using backslash quoting."""
+
     # The regex pattern matches:
     # - `\\` : Backslash
     # - `\'` : Single quote
@@ -262,6 +263,7 @@ def icp(
 def iquest(*args) -> str:
     """Run a non-paged iquest command with the specified arguments and return the
     result as a string. If the command returned no results, return an empty string."""
+
     cmd = ["iquest", "--no-page", *args]
     log.debug("Running command", cmd=cmd)
 
@@ -289,6 +291,7 @@ def iquest(*args) -> str:
 
 def has_specific_sql(alias: str) -> bool:
     """Return True if iRODS has a specific query installed under the alias."""
+
     alias = _bs_escape(alias)
 
     existing = iquest("--sql", "ls")
@@ -298,6 +301,7 @@ def has_specific_sql(alias: str) -> bool:
 
 def have_admin() -> bool:
     """Return true if the current user has iRODS admin capability."""
+
     cmd = ["iadmin", "lu"]
     try:
         _run(cmd)
@@ -308,6 +312,7 @@ def have_admin() -> bool:
 
 def add_specific_sql(alias: str, sql: str):
     """Add a specific query under the alias, if the alias is not already used."""
+
     alias = _bs_escape(alias)
 
     if not has_specific_sql(alias):
@@ -317,6 +322,7 @@ def add_specific_sql(alias: str, sql: str):
 
 def remove_specific_sql(alias: str):
     """Remove any specific query under the alias, if present."""
+
     alias = _bs_escape(alias)
 
     if has_specific_sql(alias):

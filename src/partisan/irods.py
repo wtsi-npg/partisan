@@ -139,14 +139,17 @@ class Baton:
 
     def is_running(self) -> bool:
         """Returns true if the client is running."""
+
         return self._proc and self._proc.poll() is None
 
     def pid(self):
         """Returns the PID of the baton-do client process."""
+
         return self._pid
 
     def start(self):
         """Starts the client if it is not already running."""
+
         if self.is_running():
             log.warning(
                 "Tried to start a Baton instance that is already running",
@@ -176,6 +179,7 @@ class Baton:
         def stderr_reader(err):
             """Report anything from client STDERR to the error log. There should be
             virtually no traffic here."""
+
             for line in iter(err.readline, b""):
                 log.error(
                     f"{Baton.CLIENT} STDERR",
@@ -189,6 +193,7 @@ class Baton:
 
     def stop(self):
         """Stops the client if it is running."""
+
         if not self.is_running():
             return
 
@@ -237,6 +242,7 @@ class Baton:
             A single Dict when listing a data object or single collection, or multiple
             Dicts when listing a collection's contents.
         """
+
         result = self._execute(
             Baton.LIST,
             {
@@ -283,6 +289,7 @@ class Baton:
 
         Returns: The checksum.
         """
+
         result = self._execute(
             Baton.CHECKSUM,
             {
@@ -306,6 +313,7 @@ class Baton:
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
+
         self._execute(
             Baton.METAMOD, {Baton.OP: Baton.ADD}, item, timeout=timeout, tries=tries
         )
@@ -319,6 +327,7 @@ class Baton:
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
+
         self._execute(
             Baton.METAMOD, {Baton.OP: Baton.REM}, item, timeout=timeout, tries=tries
         )
@@ -351,6 +360,7 @@ class Baton:
 
         Returns: The query result.
         """
+
         args = {}
         if collection:
             args["collection"] = True
@@ -376,6 +386,7 @@ class Baton:
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
+
         self._execute(
             Baton.CHMOD, {"recurse": recurse}, item, timeout=timeout, tries=tries
         )
@@ -434,6 +445,7 @@ class Baton:
 
         Returns: The data object contents as a string.
         """
+
         result = self._execute(Baton.GET, {}, item, timeout=timeout, tries=tries)
         if Baton.DATA not in result:
             raise InvalidJSONError(
@@ -465,6 +477,7 @@ class Baton:
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
+
         item[Baton.DIR] = local_path.parent
         item[Baton.FILE] = local_path.name
 
@@ -491,6 +504,7 @@ class Baton:
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
+
         self._execute(
             Baton.MKDIR, {"recurse": parents}, item, timeout=timeout, tries=tries
         )
@@ -687,11 +701,13 @@ class BatonPool:
 
     def is_open(self):
         """Return True if the pool is open to get clients."""
+
         with self._mutex:
             return self._open
 
     def close(self):
         """Close the pool and stop all the clients."""
+
         with self._mutex:
             log.debug("Closing the client pool")
             self._open = False
@@ -709,6 +725,7 @@ class BatonPool:
 
         Returns: Baton
         """
+
         if not self.is_open():
             raise BatonError("Attempted to get a client from a closed pool")
 
@@ -728,6 +745,7 @@ class BatonPool:
             timeout: Timeout to put a client, in seconds. Raises queue.Full if the
             operation times out.
         """
+
         log.debug(f"Returning a client to the pool: {c}")
 
         if not c.is_running():
@@ -746,6 +764,7 @@ def client_pool(maxsize=4) -> Generator[BatonPool, Any, None]:
 
     Yields: BatonPool
     """
+
     pool = BatonPool(maxsize=maxsize)
     try:
         yield pool
@@ -766,6 +785,7 @@ def client(pool: BatonPool, timeout=None) -> Generator[Baton, Any, None]:
 
     Returns: Baton
     """
+
     c = pool.get(timeout=timeout)
     try:
         yield c
@@ -812,6 +832,7 @@ def query_metadata(
 
     Returns: A list of collections and data objects matching the query.
     """
+
     with client(pool) as c:
         result = c.query_metadata(
             avus=avus,
@@ -853,6 +874,7 @@ class Timestamp:
                 the timestamp operators used by iRODS (>, <, <=, >=, n>=, n<=, n>, n<).
                 The default is >=.
         """
+
         self.value = value
         self.event = event
         self.operator = operator
@@ -989,6 +1011,7 @@ class AVU:
                 Optional, defaults to '='. Must be one of the available iRODS
                 query operators. Operators are not considered when comparing AVUs.
         """
+
         if attribute is None:
             raise ValueError("AVU attribute may not be None")
         if value is None:
@@ -1055,6 +1078,7 @@ class AVU:
 
         Returns: A mapping of each attribute to a list of AVUs with that attribute.
         """
+
         collated = defaultdict(lambda: list())
         for avu in avus:
             collated[avu.attribute].append(avu)
@@ -1076,6 +1100,7 @@ class AVU:
 
         Returns: AVU
         """
+
         if history_date is None:
             history_date = datetime.now(timezone.utc)
         date = format_timestamp(history_date)
@@ -1113,11 +1138,13 @@ class AVU:
     def namespace(self):
         """The attribute namespace. If the attribute has no namespace, the empty
         string."""
+
         return self._namespace
 
     @property
     def without_namespace(self):
         """The attribute without namespace."""
+
         return self._attribute
 
     @property
@@ -1125,6 +1152,7 @@ class AVU:
         """The attribute, including namespace, if any. The namespace an attribute are
         separated by AVU.SEPARATOR (or AVU.IRODS_SEPARATOR in the case of iRODS'
         internal AVUs)."""
+
         if self._namespace:
             return f"{self._namespace}{self._separator}{self._attribute}"
         else:
@@ -1133,16 +1161,19 @@ class AVU:
     @property
     def value(self):
         """The value associates with the attribute."""
+
         return self._value
 
     @property
     def units(self):
         """The units associated with the attribute. Units may be None."""
+
         return self._units
 
     @property
     def operator(self):
         """The operator associated with the AVU. The default is '='."""
+
         return self._operator
 
     def with_namespace(self, namespace: str):
@@ -1153,10 +1184,12 @@ class AVU:
 
         Returns: A new AVU with the specified namespace.
         """
+
         return AVU(self._attribute, self._value, self._units, namespace=namespace)
 
     def is_history(self) -> bool:
         """Return true if this is a history AVU."""
+
         return self._attribute.endswith(AVU.HISTORY_SUFFIX)
 
     def __hash__(self):
@@ -1340,14 +1373,17 @@ class User:
 
     def is_rodsadmin(self):
         """Return True if the user is a rodsadmin."""
+
         return self.type == "rodsadmin"
 
     def is_group(self):
         """Return True if the user represents a rodsgroup."""
+
         return self.type == "rodsgroup"
 
     def is_rodsuser(self):
         """Return True if the user is a rodsuser."""
+
         return self.type == "rodsuser"
 
     def __hash__(self):
@@ -1382,6 +1418,7 @@ def rods_user(name: str = None) -> User | None:
 
     Returns: A new instance of User.
     """
+
     ui = {}
     for line in iuserinfo(name).splitlines():
         if ":" in line:
@@ -1413,6 +1450,7 @@ def rods_users(user_type: str = None, zone=None) -> list[User]:
     Returns:
         A list of users in the specified zone.
     """
+
     if user_type is not None and user_type not in [
         "rodsadmin",
         "groupadmin",
@@ -1442,11 +1480,13 @@ def current_user() -> User:
 
     Returns: The user's name and their zone.
     """
+
     return rods_user()
 
 
 def client_version() -> tuple[int, ...]:
     """Return the baton client version."""
+
     completed = subprocess.run(["baton-do", "--version"], capture_output=True)
     if completed.returncode == 0:
         version = completed.stdout.decode("utf-8").strip()
@@ -1461,6 +1501,7 @@ def client_version() -> tuple[int, ...]:
 
 def server_version() -> tuple[int, ...]:
     """Return the version reported by the iRODS server."""
+
     completed = subprocess.run(["baton-do", "--server-version"], capture_output=True)
     if completed.returncode == 0:
         version = completed.stdout.decode("utf-8").strip()
@@ -1515,6 +1556,7 @@ def rods_path_exists(
     Returns:
         True if the path exists.
     """
+
     return rods_path_type(path, timeout=timeout, tries=tries, pool=pool) is not None
 
 
@@ -1536,6 +1578,7 @@ def rods_path_type(
     Returns:
         Collection | DataObject, or None.
     """
+
     try:
         with client(pool) as c:
             match c.list({Baton.COLL: path}, timeout=timeout, tries=tries):
@@ -1558,6 +1601,7 @@ def format_timestamp(ts: datetime) -> str:
     Args:
         ts: The timestamp to format
     """
+
     return ts.isoformat(timespec="seconds")
 
 
@@ -1571,6 +1615,7 @@ def make_rods_item(path: PurePath | str, pool=default_pool) -> Collection | Data
     Returns:
         A Collection or DataObject, as appropriate.
     """
+
     with client(pool) as c:
         item = c.list({Baton.COLL: path}).pop()
         return _make_rods_item(item, pool=pool)
@@ -1611,6 +1656,7 @@ class RodsItem(PathLike):
             check_type: Check the remote path type if True, defaults to False.
             pool: A baton client pool. Optional.
         """
+
         self.path = PurePath(remote_path)
         self.local_path = local_path
         self.check_type = check_type
@@ -1638,10 +1684,12 @@ class RodsItem(PathLike):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
         """
+
         return self._exists(timeout=timeout, tries=tries)
 
     def connected(self):
         """Return True if the item is connected."""
+
         return self._pool is not None
 
     def avu(self, attribute: Any, ancestors=False, timeout=None, tries=1) -> AVU:
@@ -1658,6 +1706,7 @@ class RodsItem(PathLike):
         Returns:
             A single AVU with the specified attribute.
         """
+
         attr = str(attribute)
         avus = [
             avu
@@ -1689,6 +1738,7 @@ class RodsItem(PathLike):
 
         Returns: True if every AVU (i.e. key, value and optionally, unit) is present.
         """
+
         return set(avus).issubset(
             self.metadata(ancestors=ancestors, timeout=timeout, tries=tries)
         )
@@ -1707,6 +1757,7 @@ class RodsItem(PathLike):
 
         Returns: True if every attribute is present in at least one AVU.
         """
+
         collated = self.collated_metadata(
             ancestors=ancestors, timeout=timeout, tries=tries
         )
@@ -1725,6 +1776,7 @@ class RodsItem(PathLike):
 
         Returns: The number of AVUs added.
         """
+
         current = self.metadata()
         to_add = sorted(set(avus).difference(current))
 
@@ -1753,6 +1805,7 @@ class RodsItem(PathLike):
 
         Returns: The number of AVUs removed.
         """
+
         current = self.metadata()
         to_remove = sorted(set(current).intersection(avus))
 
@@ -1795,6 +1848,7 @@ class RodsItem(PathLike):
 
         Returns: Tuple[int, int]
         """
+
         if history_date is None:
             history_date = datetime.now(timezone.utc)
 
@@ -1863,6 +1917,7 @@ class RodsItem(PathLike):
 
         Returns: The number of access controls added.
         """
+
         current = self.acl()
         to_add = sorted(set(acs).difference(current))
         log.debug("Preparing ACL", path=self, curr=current, arg=acs, add=to_add)
@@ -1896,6 +1951,7 @@ class RodsItem(PathLike):
 
         Returns: The number of access controls removed.
         """
+
         current = self.acl()
         to_remove = sorted(set(current).intersection(acs))
         log.debug("Preparing ACL", path=self, curr=current, arg=acs, rem=to_remove)
@@ -1931,6 +1987,7 @@ class RodsItem(PathLike):
 
         Returns: Tuple[int, int]
         """
+
         current = self.acl()
         to_remove = sorted(set(current).difference(acs))
         to_add = sorted(set(acs).difference(current))
@@ -1976,6 +2033,7 @@ class RodsItem(PathLike):
         the behaviour of the Python pathlib API, even though "/" is not directly usable
         as a collection on an iRODS system, being host to the iRODS zones.
         """
+
         if isinstance(self, DataObject):
             return [Collection(p) for p in PurePath(self.path, self.name).parents]
 
@@ -1990,6 +2048,7 @@ class RodsItem(PathLike):
 
         Returns: All the AVUs of the item's ancestors.
         """
+
         avus = set()
         for coll in self.ancestors():
             avus.update(coll.metadata(timeout=timeout, tries=tries))
@@ -2010,6 +2069,7 @@ class RodsItem(PathLike):
 
         Returns: List[AVU]
         """
+
         if not self.connected():
             if ancestors:
                 raise ValueError("Cannot retrieve ancestor metadata when disconnected")
@@ -2046,6 +2106,7 @@ class RodsItem(PathLike):
 
         Returns: Map of AVU attributes to lists of corresponding AVU values.
         """
+
         collated = defaultdict(list)
         for avu in self.metadata(ancestors=ancestors, timeout=timeout, tries=tries):
             collated[avu.attribute].append(avu.value)
@@ -2062,6 +2123,7 @@ class RodsItem(PathLike):
 
         Returns: The ACL of the item.
         """
+
         return self.acl(user_type=user_type, timeout=timeout, tries=tries)
 
     @rods_type_check
@@ -2075,6 +2137,7 @@ class RodsItem(PathLike):
 
         Returns: The ACL of the item.
         """
+
         if user_type is not None and user_type not in [
             "rodsadmin",
             "rodsgroup",
@@ -2136,27 +2199,32 @@ class RodsItem(PathLike):
     @abstractmethod
     def rods_type(self) -> Type[RodsItem] | None:
         """Return a Python type representing the kind of iRODS path supplied."""
+
         pass
 
     @abstractmethod
     def check_rods_type(self, **kwargs):
         """Raise an error if the item does not have an appropriate type of iRODS path.
         e.g. raise an error if a Collection object has the path of a data object."""
+
         pass
 
     @abstractmethod
     def get(self, local_path: Path | str, **kwargs):
         """Get the item from iRODS."""
+
         pass
 
     @abstractmethod
     def put(self, local_path: Path | str, **kwargs):
         """Put the item into iRODS."""
+
         pass
 
     @abstractmethod
     def to_dict(self) -> dict:
         """Return a minimal dictionary representation of the item."""
+
         pass
 
     @abstractmethod
@@ -2168,6 +2236,7 @@ class RodsItem(PathLike):
         Returns:
             A baton-format JSON string.
         """
+
         pass
 
     @classmethod
@@ -2178,6 +2247,7 @@ class RodsItem(PathLike):
         Args:
             json_str: A baton-format JSON string.
         """
+
         pass
 
     @abstractmethod
@@ -2217,6 +2287,7 @@ class DataObject(RodsItem):
             check_type: Check the remote path type if True, defaults to True.
             pool: A baton client pool. Optional.
         """
+
         lp = Path(local_path) if local_path else None
         rp = PurePath(remote_path)
 
@@ -2295,6 +2366,7 @@ class DataObject(RodsItem):
 
     def check_rods_type(self, **kwargs):
         """Raise an error if the path is not a data object in iRODS."""
+
         if not self.check_type:
             return
 
@@ -2313,6 +2385,7 @@ class DataObject(RodsItem):
 
         Returns: A new DataObject.
         """
+
         item = self._list(timeout=timeout, tries=tries).pop()
         return _make_rods_item(item, pool=self._pool)
 
@@ -2341,6 +2414,7 @@ class DataObject(RodsItem):
 
         Returns: A checksum
         """
+
         if calculate_checksum or recalculate_checksum or verify_checksum:
             item = self.to_dict()
             with client(self._pool) as c:
@@ -2368,6 +2442,7 @@ class DataObject(RodsItem):
 
         Returns: The size of the data object in bytes.
         """
+
         item = self._list(size=True, timeout=timeout, tries=tries).pop()
         return item[Baton.SIZE]
 
@@ -2382,6 +2457,7 @@ class DataObject(RodsItem):
 
         Returns: The data object's earliest modification timestamp
         """
+
         return self.modified(timeout=timeout, tries=tries)
 
     @connected
@@ -2404,6 +2480,7 @@ class DataObject(RodsItem):
 
         Returns: The data object's earliest creation timestamp
         """
+
         return min([r.created for r in self.replicas(timeout=timeout, tries=tries)])
 
     @connected
@@ -2426,6 +2503,7 @@ class DataObject(RodsItem):
 
         Returns: The data object's earliest modified timestamp
         """
+
         return min([r.modified for r in self.replicas(timeout=timeout, tries=tries)])
 
     @rods_type_check
@@ -2439,6 +2517,7 @@ class DataObject(RodsItem):
 
         Returns: The object's replicas
         """
+
         item = self._list(replicas=True, timeout=timeout, tries=tries).pop()
         if Baton.REPLICAS not in item:
             raise BatonError(f"{Baton.REPLICAS} key missing from {item}")
@@ -2522,6 +2601,7 @@ class DataObject(RodsItem):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
         """
+
         kwargs = {
             "verify_checksum": verify_checksum,
             "redirect": redirect,
@@ -2641,6 +2721,7 @@ class DataObject(RodsItem):
         Returns:
             The DataObject.
         """
+
         kwargs = {
             "calculate_checksum": calculate_checksum,
             "verify_checksum": verify_checksum,
@@ -2722,6 +2803,7 @@ class DataObject(RodsItem):
 
         Returns: str
         """
+
         item = self.to_dict()
         with client(self._pool) as c:
             return c.read(item, timeout=timeout, tries=tries)
@@ -2740,6 +2822,7 @@ class DataObject(RodsItem):
         Returns: The number of valid replicas trimmed and the number of invalid
             replicas trimmed.
         """
+
         vr = [r for r in self.replicas() if r.valid]
         ir = [r for r in self.replicas() if not r.valid]
 
@@ -2799,6 +2882,7 @@ class DataObject(RodsItem):
         Returns:
             True if the data object is internally consistent, False otherwise.
         """
+
         if not self.exists():
             return True
 
@@ -2939,6 +3023,7 @@ class Collection(RodsItem):
 
         Returns: A list of collections with matching metadata.
         """
+
         with client(pool) as c:
             items = c.query_metadata(
                 avus=avus,
@@ -2968,6 +3053,7 @@ class Collection(RodsItem):
             check_type: Check the remote path type if True, defaults to True.
             pool: A baton client pool. Optional.
         """
+
         super().__init__(
             remote_path, local_path=local_path, check_type=check_type, pool=pool
         )
@@ -2986,6 +3072,7 @@ class Collection(RodsItem):
         Returns:
             The Collection.
         """
+
         if exist_ok and self.exists():
             return self
 
@@ -2997,6 +3084,7 @@ class Collection(RodsItem):
     @property
     def rods_type(self):
         """Return a Python type representing the kind of iRODS path supplied."""
+
         if not self.connected():
             return None
 
@@ -3011,6 +3099,7 @@ class Collection(RodsItem):
 
     def check_rods_type(self, **kwargs):
         """Raise an error if the path is not a collection in iRODS."""
+
         if not self.check_type:
             return
 
@@ -3034,6 +3123,7 @@ class Collection(RodsItem):
 
         Returns: A list of collections and data objects directly in the collection.
         """
+
         items = self._list(
             acl=acl,
             avu=avu,
@@ -3081,6 +3171,7 @@ class Collection(RodsItem):
           tries: Number of times to try the operation.
 
         Returns: Iterable[Collection | DataObject]"""
+
         items = self._list(
             acl=acl,
             avu=avu,
@@ -3118,6 +3209,7 @@ class Collection(RodsItem):
 
         Returns: Collection
         """
+
         item = self._list(acl=acl, avu=avu, timeout=timeout, tries=tries).pop()
         return _make_rods_item(item, pool=self._pool)
 
@@ -3132,6 +3224,7 @@ class Collection(RodsItem):
         Returns:
             The collection's modification timestamp.
         """
+
         return self.modified(timeout=timeout, tries=tries)
 
     @connected
@@ -3541,6 +3634,7 @@ class Collection(RodsItem):
 
         Returns: The number of access controls added.
         """
+
         num_added = super().add_permissions(*acs, timeout=timeout, tries=tries)
 
         if recurse:
@@ -3585,6 +3679,7 @@ class Collection(RodsItem):
 
         Returns: The number of access controls removed.
         """
+
         num_removed = super().remove_permissions(*acs, timeout=timeout, tries=tries)
         if recurse:
 
@@ -3628,6 +3723,7 @@ class Collection(RodsItem):
 
         Returns: The number of access controls removed and added.
         """
+
         num_removed, num_added = super().supersede_permissions(
             *acs, timeout=timeout, tries=tries
         )
@@ -3802,6 +3898,7 @@ def _make_rods_item(item: dict, pool: BatonPool) -> Collection | DataObject:
 
     Returns: Collection | DataObject
     """
+
     match item:
         case {Baton.COLL: c, Baton.OBJ: o}:
             return DataObject(PurePath(c, o), pool=pool)

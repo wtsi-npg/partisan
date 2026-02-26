@@ -24,4 +24,5 @@ __version__ = importlib.metadata.version("partisan")
 
 def version() -> str:
     """Return the current version."""
+
     return __version__
