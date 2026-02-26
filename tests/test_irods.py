@@ -37,8 +37,10 @@ from partisan.irods import (
     Collection,
     DataObject,
     Permission,
+    RodsItem,
     Timestamp,
     User,
+    client_pool,
     current_user,
     make_rods_item,
     query_metadata,
@@ -1555,6 +1557,41 @@ class TestDataObject:
         obj = DataObject("/no/such/data_object.txt")
         with pytest.raises(RodsError, match="does not exist"):
             obj.list()
+
+    @m.it("Retries on RodsError")
+    def test_retries_on_rods_error(self, simple_data_object, monkeypatch):
+        with client_pool(maxsize=1) as pool:
+            obj = DataObject(simple_data_object, pool=pool)
+
+            # Checking the rods uses the `list` method and itself retries, so prime
+            # this before monkeypatching to make the subsequent retry counting more
+            # transparent
+            obj.check_rods_type()
+
+            original_send = Baton._send
+            calls = {"count": 0}
+
+            def flaky_send(self, envelope):
+                calls["count"] += 1
+                if calls["count"] < 3:
+                    return {
+                        Baton.ERR: {
+                            Baton.MSG: "transient failure",
+                            Baton.CODE: -500000,
+                        }
+                    }
+                return original_send(self, envelope)
+
+            monkeypatch.setattr(Baton, "_send", flaky_send)
+
+            # +1 try, which fails.
+            with pytest.raises(RodsError, match="transient failure"):
+                obj.list(tries=1)
+
+            # +1 try, which fails.
+            # +1 try, which succeeds.
+            assert obj.list(tries=2) == DataObject(simple_data_object)
+            assert calls["count"] == 3
 
     @m.it("Can be got from iRODS to a file")
     def test_get_data_object(self, tmp_path, simple_data_object):

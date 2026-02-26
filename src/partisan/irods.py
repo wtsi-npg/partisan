@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021, 2022, 2023, 2024, 2025 Genome Research Ltd. All
-# rights reserved.
+# Copyright © 2020, 2021, 2022, 2023, 2024, 2025, 2026 Genome Research
+# Ltd. All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -73,6 +73,9 @@ class Baton:
     """
 
     CLIENT = "baton-do"
+
+    BACKOFF_FACTOR = 2.0
+    BACKOFF_MAX = 60.0
 
     AVUS = "avus"
     ATTRIBUTE = "attribute"
@@ -512,28 +515,65 @@ class Baton:
         # Not all long-duration API calls are bad, so timeouts must be set by
         # operation type. A "put" operation of a multi-GiB file may legitimately take
         # significant time, a metadata change may not.
-        lifo = LifoQueue(maxsize=1)
+        def _start_send():
+            q = LifoQueue(maxsize=1)
+            thread = Thread(target=lambda q, w: q.put(self._send(w)), args=(q, wrapped))
+            thread.start()
+            return q, thread
 
-        t = Thread(target=lambda q, w: q.put(self._send(w)), args=(lifo, wrapped))
-        t.start()
+        lifo, t = _start_send()
+
+        def _backoff_timeout(base_timeout, attempt: int):
+            if base_timeout is None:
+                return None
+            if base_timeout <= 0:
+                return 0
+
+            timeout = base_timeout * (self.BACKOFF_FACTOR**attempt)
+            if self.BACKOFF_MAX is not None:
+                timeout = min(timeout, self.BACKOFF_MAX)
+
+            return timeout
 
         for i in range(tries):
-            t.join(timeout=timeout)
-            if not t.is_alive():
-                break
-            log.warning("Timed out sending", client=self, tryno=i, doc=wrapped)
+            attempt_timeout = _backoff_timeout(timeout, i)
+            t.join(timeout=attempt_timeout)
+            if t.is_alive():
+                log.warning(
+                    "Timed out sending",
+                    client=self,
+                    tryno=i,
+                    doc=wrapped,
+                    timeout=attempt_timeout,
+                )
+                continue
 
-            # Still alive after all the tries?
+            response = lifo.get(timeout=0.1)
+
+            try:
+                return self._unwrap(response)
+            except RodsError as e:
+                if i >= tries - 1:
+                    raise
+                log.warning(
+                    "RodsError, retrying",
+                    client=self,
+                    tryno=i,
+                    code=e.code,
+                    msg=str(e),
+                )
+                lifo, t = _start_send()
+
+        # Still alive after all the tries?
         if t.is_alive():
             self.stop()
             raise BatonTimeoutError(
                 "Exhausted all timeouts, stopping client", client=self, tryno=tries
             )
 
-        # By setting a timeout here (0.1 second is arbitrary), we will raise an Empty
-        # exception. This shouldn't happen because timeouts are dealt with above.
-        response = lifo.get(timeout=0.1)
-        return self._unwrap(response)
+        raise BatonError(
+            f"Baton '{operation}' operation on {item} " "finished without a response"
+        )
 
     @staticmethod
     def _wrap(operation: str, args: dict, item: dict) -> dict:
@@ -770,7 +810,7 @@ def query_metadata(
         tries: Number of times to try the operation.
         pool: Client pool to use. If omitted, the default pool is used.
 
-    Returns: List[Collection | DataObject]
+    Returns: A list of collections and data objects matching the query.
     """
     with client(pool) as c:
         result = c.query_metadata(
@@ -1013,10 +1053,9 @@ class AVU:
         Args:
             avus: One or more AVUs to collate.
 
-        Returns: Dict[str: List[AVU]]
+        Returns: A mapping of each attribute to a list of AVUs with that attribute.
         """
         collated = defaultdict(lambda: list())
-
         for avu in avus:
             collated[avu.attribute].append(avu)
 
@@ -1112,7 +1151,7 @@ class AVU:
         Args:
             namespace: The new namespace.
 
-        Returns: str
+        Returns: A new AVU with the specified namespace.
         """
         return AVU(self._attribute, self._value, self._units, namespace=namespace)
 
@@ -1185,7 +1224,7 @@ class Replica:
     """An iRODS data object replica.
 
     iRODS may maintain multiple copies of the data backing a data object. Each one of
-    these as modeled as a Replica instance. Every data object has at least one Replica.
+    these is modelled as a Replica instance. Every data object has at least one Replica.
     """
 
     def __init__(
@@ -1450,7 +1489,7 @@ def connected(method):
 
 def rods_type_check(method):
     """Add a check to RodsItem methods that ensures the item's path in iRODS has the
-    appropriate type. i.e. that a Collection has a collection path and a DataObject has
+    appropriate type, i.e. that a Collection has a collection path and a DataObject has
     a data object path."""
 
     @wraps(method)
@@ -1506,7 +1545,6 @@ def rods_path_type(
                     return Collection
                 case [item]:
                     raise ValueError(f"Failed to recognised client response '{item}'")
-            return None
     except RodsError as e:
         if e.code == -310000:  # iRODS error code for path not found
             return None
@@ -1555,6 +1593,9 @@ class RodsItem(PathLike):
     to convert an item from disconnected to connected is to create a new instance with
     the same path and a pool, then copy the metadata and ACLs across.
     """
+
+    INTERNAL_TIMEOUT = 10.0
+    INTERNAL_TRIES = 3
 
     def __init__(
         self,
@@ -1682,7 +1723,7 @@ class RodsItem(PathLike):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: int
+        Returns: The number of AVUs added.
         """
         current = self.metadata()
         to_add = sorted(set(avus).difference(current))
@@ -1710,7 +1751,7 @@ class RodsItem(PathLike):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: int
+        Returns: The number of AVUs removed.
         """
         current = self.metadata()
         to_remove = sorted(set(current).intersection(avus))
@@ -1820,7 +1861,7 @@ class RodsItem(PathLike):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: int
+        Returns: The number of access controls added.
         """
         current = self.acl()
         to_add = sorted(set(acs).difference(current))
@@ -1853,7 +1894,7 @@ class RodsItem(PathLike):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: int
+        Returns: The number of access controls removed.
         """
         current = self.acl()
         to_remove = sorted(set(current).intersection(acs))
@@ -2019,7 +2060,7 @@ class RodsItem(PathLike):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: List[AC]
+        Returns: The ACL of the item.
         """
         return self.acl(user_type=user_type, timeout=timeout, tries=tries)
 
@@ -2032,7 +2073,7 @@ class RodsItem(PathLike):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: List[AC]
+        Returns: The ACL of the item.
         """
         if user_type is not None and user_type not in [
             "rodsadmin",
@@ -2239,12 +2280,16 @@ class DataObject(RodsItem):
     @property
     def rods_type(self):
         """Return a Python type representing the kind of iRODS path supplied."""
+
         if not self.connected():
             return None
 
         if self._rods_type is None:
             self._rods_type = rods_path_type(
-                PurePath(self.path, self.name), pool=self._pool
+                PurePath(self.path, self.name),
+                timeout=RodsItem.INTERNAL_TIMEOUT,
+                tries=RodsItem.INTERNAL_TRIES,
+                pool=self._pool,
             )
         return self._rods_type
 
@@ -2266,7 +2311,7 @@ class DataObject(RodsItem):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: DataObject
+        Returns: A new DataObject.
         """
         item = self._list(timeout=timeout, tries=tries).pop()
         return _make_rods_item(item, pool=self._pool)
@@ -2321,7 +2366,7 @@ class DataObject(RodsItem):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: int
+        Returns: The size of the data object in bytes.
         """
         item = self._list(size=True, timeout=timeout, tries=tries).pop()
         return item[Baton.SIZE]
@@ -2802,6 +2847,8 @@ class DataObject(RodsItem):
                 tries=tries,
             )
 
+        return self
+
     def _put(
         self,
         local_path: Path | str,
@@ -2954,7 +3001,12 @@ class Collection(RodsItem):
             return None
 
         if self._rods_type is None and self.connected():
-            self._rods_type = rods_path_type(self.path, pool=self._pool)
+            self._rods_type = rods_path_type(
+                self.path,
+                timeout=RodsItem.INTERNAL_TIMEOUT,
+                tries=RodsItem.INTERNAL_TRIES,
+                pool=self._pool,
+            )
         return self._rods_type
 
     def check_rods_type(self, **kwargs):
@@ -3487,7 +3539,7 @@ class Collection(RodsItem):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: int
+        Returns: The number of access controls added.
         """
         num_added = super().add_permissions(*acs, timeout=timeout, tries=tries)
 
@@ -3531,7 +3583,7 @@ class Collection(RodsItem):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: int
+        Returns: The number of access controls removed.
         """
         num_removed = super().remove_permissions(*acs, timeout=timeout, tries=tries)
         if recurse:
@@ -3574,7 +3626,7 @@ class Collection(RodsItem):
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
 
-        Returns: Tuple[int, int]
+        Returns: The number of access controls removed and added.
         """
         num_removed, num_added = super().supersede_permissions(
             *acs, timeout=timeout, tries=tries
