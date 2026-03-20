@@ -67,6 +67,10 @@ iRODS client 'baton' (https://github.com/wtsi-npg/baton).
 """
 
 
+# iRODS error codes
+USER_FILE_DOES_NOT_EXIST = -310000
+
+
 class Baton:
     """A wrapper around the baton-do client program, used for interacting with
     iRODS.
@@ -567,6 +571,11 @@ class Baton:
             try:
                 return self._unwrap(response)
             except RodsError as e:
+                # We don't want to retry this case in the context of a list operation
+                # because that's how we test for path existence in iRODS.
+                if e.code == USER_FILE_DOES_NOT_EXIST and operation == Baton.LIST:
+                    raise
+
                 if i >= tries - 1:
                     raise
                 log.warning(
@@ -1591,7 +1600,7 @@ def rods_path_type(
                 case [item]:
                     raise ValueError(f"Failed to recognised client response '{item}'")
     except RodsError as e:
-        if e.code == -310000:  # iRODS error code for path not found
+        if e.code == USER_FILE_DOES_NOT_EXIST:
             return None
         raise e
 
@@ -1673,7 +1682,7 @@ class RodsItem(PathLike):
         try:
             self._list(timeout=timeout, tries=tries)
         except RodsError as e:
-            if e.code == -310000:  # iRODS error code for path not found
+            if e.code == USER_FILE_DOES_NOT_EXIST:
                 return False
         return True
 
