@@ -572,6 +572,8 @@ class Baton:
                 log.warning(
                     "RodsError, retrying",
                     client=self,
+                    operation=operation,
+                    args=args,
                     tryno=i,
                     code=e.code,
                     msg=str(e),
