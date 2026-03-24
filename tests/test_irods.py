@@ -1420,6 +1420,30 @@ class TestCollection:
             ]
         ]
 
+    @m.context("When an empty Collection exists")
+    @m.it("Can be removed")
+    def test_remove_empty_collection(self, simple_collection):
+        coll = Collection(simple_collection)
+
+        assert coll.exists()
+        assert coll.contents() == []
+        coll.remove()
+        assert not coll.exists()
+
+    @m.context("When a full Collection exists")
+    @m.it("Can be removed with recursion")
+    def test_remove_full_collection(self, full_collection):
+        coll = Collection(full_collection)
+
+        assert coll.exists()
+        assert coll.contents() != []
+
+        with pytest.raises(RodsError, match="CAT_COLLECTION_NOT_EMPTY"):
+            coll.remove()
+
+        coll.remove(recurse=True)
+        assert not coll.exists()
+
 
 @m.describe("DataObject")
 class TestDataObject:
@@ -1612,6 +1636,14 @@ class TestDataObject:
             hashlib.md5(contents.encode()).hexdigest()
             == "39a4aa291ca849d601e4e5b8ed627a04"
         )
+
+    @m.it("Can be removed from iRODS")
+    def test_remove_data_object(self, simple_data_object):
+        obj = DataObject(simple_data_object)
+
+        assert obj.exists()
+        obj.remove()
+        assert not obj.exists()
 
     @m.it("Has a size")
     def test_data_object_size(self, simple_data_object):

@@ -114,6 +114,8 @@ class Baton:
     MKDIR = "mkdir"
     GET = "get"
     PUT = "put"
+    REMOVE = "remove"
+    RMDIR = "rmdir"
     METAQUERY = "metaquery"
 
     METAMOD = "metamod"
@@ -511,6 +513,36 @@ class Baton:
 
         self._execute(
             Baton.MKDIR, {"recurse": parents}, item, timeout=timeout, tries=tries
+        )
+
+    def remove(self, item: dict, force=True, timeout=None, tries=1):
+        """Remove a data object.
+
+        Args:
+            item: A dictionary representing the item. When serialized as JSON,
+                this must be a suitable input for baton-do.
+            force: Force removal of the item.
+            timeout: Operation timeout.
+            tries: Number of times to try the operation.
+        """
+
+        self._execute(
+            Baton.REMOVE, {"force": force}, item, timeout=timeout, tries=tries
+        )
+
+    def rmdir(self, item: dict, recurse=False, timeout=None, tries=1):
+        """Remove a collection.
+
+        Args:
+            item: A dictionary representing the item. When serialized as JSON,
+                this must be a suitable input for baton-do.
+            recurse: Recursively remove the collection.
+            timeout: Operation timeout.
+            tries: Number of times to try the operation.
+        """
+
+        self._execute(
+            Baton.RMDIR, {"recurse": recurse}, item, timeout=timeout, tries=tries
         )
 
     def _execute(
@@ -2233,6 +2265,12 @@ class RodsItem(PathLike):
         pass
 
     @abstractmethod
+    def remove(self, **kwargs):
+        """Remove the item from iRODS."""
+
+        pass
+
+    @abstractmethod
     def to_dict(self) -> dict:
         """Return a minimal dictionary representation of the item."""
 
@@ -2806,6 +2844,21 @@ class DataObject(RodsItem):
         plog.info("Added new data object", remote_checksum=remote_chk)
 
         return self
+
+    @rods_type_check
+    @connected
+    def remove(self, force=True, timeout=None, tries=1):
+        """Remove the data object from iRODS.
+
+        Args:
+            force: Force removal of the data object. Default is True.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+        """
+
+        item = self.to_dict()
+        with client(self._pool) as c:
+            c.remove(item, force=force)
 
     @rods_type_check
     @connected
@@ -3625,6 +3678,21 @@ class Collection(RodsItem):
                 path_pairs.append((local, remote))
 
             yield from _batch_put(path_pairs)
+
+    @rods_type_check
+    @connected
+    def remove(self, recurse=False, timeout=None, tries=1):
+        """Remove the collection from iRODS.
+
+        Args:
+            recurse: Recursively remove the collection and its contents.
+            timeout: Operation timeout in seconds.
+            tries: Number of times to try the operation.
+        """
+
+        item = self.to_dict()
+        with client(self._pool) as c:
+            c.rmdir(item, recurse=recurse, timeout=timeout, tries=tries)
 
     def add_permissions(
         self,

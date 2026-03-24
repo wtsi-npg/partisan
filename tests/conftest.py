@@ -176,6 +176,7 @@ def sql_test_utilities():
 @pytest.fixture(scope="function")
 def simple_collection(tmp_path):
     """A fixture providing an empty collection"""
+
     root_path = PurePath("/testZone/home/irods/test")
     coll_path = add_rods_path(root_path, tmp_path)
 
@@ -203,6 +204,7 @@ def annotated_collection(simple_collection):
 @pytest.fixture(scope="function")
 def full_collection(tmp_path, irods_groups):
     """A fixture providing a collection with some contents"""
+
     root_path = PurePath("/testZone/home/irods/test")
     rods_path = add_rods_path(root_path, tmp_path)
 
