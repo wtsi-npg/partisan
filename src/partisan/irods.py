@@ -515,18 +515,24 @@ class Baton:
             Baton.REMOVE, {"force": force}, item, timeout=timeout, tries=tries
         )
 
-    def rmdir(self, item: dict, recurse=False, timeout=None, tries=1):
+    def rmdir(self, item: dict, recurse=False, force=True, timeout=None, tries=1):
         """Remove a collection.
 
         Args:
             item: A dictionary representing the item. When serialized as JSON,
                 this must be a suitable input for baton-do.
             recurse: Recursively remove the collection.
+            force: Force removal of the collection, rather than moving it to iRODS
+                trash. Default is True.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
         self._execute(
-            Baton.RMDIR, {"recurse": recurse}, item, timeout=timeout, tries=tries
+            Baton.RMDIR,
+            {"recurse": recurse, "force": force},
+            item,
+            timeout=timeout,
+            tries=tries,
         )
 
     def _execute(
@@ -2768,7 +2774,8 @@ class DataObject(RodsItem):
         """Remove the data object from iRODS.
 
         Args:
-            force: Force removal of the data object. Default is True.
+            force: Force removal of the data object, rather than moving it to
+               iRODS trash. Default is True.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
         """
@@ -3584,17 +3591,19 @@ class Collection(RodsItem):
 
     @rods_type_check
     @connected
-    def remove(self, recurse=False, timeout=None, tries=1):
+    def remove(self, recurse=False, force=True, timeout=None, tries=1):
         """Remove the collection from iRODS.
 
         Args:
             recurse: Recursively remove the collection and its contents.
+            force: Force removal of the collection, rather than moving it to iRODS
+                trash. Default is True.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
         """
         item = self.to_dict()
         with client(self._pool) as c:
-            c.rmdir(item, recurse=recurse, timeout=timeout, tries=tries)
+            c.rmdir(item, recurse=recurse, force=force, timeout=timeout, tries=tries)
 
     def add_permissions(
         self,
