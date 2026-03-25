@@ -39,7 +39,6 @@ class TestRegression:
 
         See https://github.com/wtsi-npg/npg-irods-python/issues/513
         """
-
         file1 = tmp_path / "file1.txt"
         with open(file1, "w") as f:
             print("line1", file=f)
