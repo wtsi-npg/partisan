@@ -176,7 +176,6 @@ def sql_test_utilities():
 @pytest.fixture(scope="function")
 def simple_collection(tmp_path):
     """A fixture providing an empty collection"""
-
     root_path = PurePath("/testZone/home/irods/test")
     coll_path = add_rods_path(root_path, tmp_path)
 
@@ -189,7 +188,6 @@ def simple_collection(tmp_path):
 @pytest.fixture(scope="function")
 def annotated_collection(simple_collection):
     """A fixture providing an annotated, empty collection"""
-
     coll = Collection(simple_collection)
     coll.add_metadata(
         AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
@@ -204,7 +202,6 @@ def annotated_collection(simple_collection):
 @pytest.fixture(scope="function")
 def full_collection(tmp_path, irods_groups):
     """A fixture providing a collection with some contents"""
-
     root_path = PurePath("/testZone/home/irods/test")
     rods_path = add_rods_path(root_path, tmp_path)
 
@@ -220,7 +217,8 @@ def full_collection(tmp_path, irods_groups):
 @pytest.fixture(scope="function")
 def simple_data_object(tmp_path):
     """A fixture providing a collection containing a single data object containing
-    UTF-8 data."""
+    UTF-8 data.
+    """
     root_path = PurePath("/testZone/home/irods/test")
     rods_path = add_rods_path(root_path, tmp_path)
 
@@ -236,7 +234,8 @@ def simple_data_object(tmp_path):
 @pytest.fixture(scope="function")
 def empty_data_object(tmp_path):
     """A fixture providing a collection containing a single data object containing
-    no data."""
+    no data.
+    """
     root_path = PurePath("/testZone/home/irods/test")
     rods_path = add_rods_path(root_path, tmp_path)
 
@@ -252,8 +251,8 @@ def empty_data_object(tmp_path):
 @pytest.fixture(scope="function")
 def annotated_data_object(simple_data_object):
     """A fixture providing a collection containing a single, annotated data object
-    containing UTF-8 data."""
-
+    containing UTF-8 data.
+    """
     obj = DataObject(simple_data_object)
     obj.add_metadata(
         AVU("attr1", "value1"), AVU("attr2", "value2"), AVU("attr3", "value3")
@@ -284,7 +283,8 @@ def invalid_replica_data_object(tmp_path, sql_test_utilities):
 @pytest.fixture(scope="function")
 def invalid_checksum_data_object(tmp_path, sql_test_utilities):
     """A fixture providing a data object with one of its two replica's checksum
-    changed."""
+    changed.
+    """
     root_path = PurePath("/testZone/home/irods/test")
     rods_path = add_rods_path(root_path, tmp_path)
 
@@ -301,7 +301,8 @@ def invalid_checksum_data_object(tmp_path, sql_test_utilities):
 @pytest.fixture(scope="function")
 def special_paths(tmp_path):
     """A fixture providing a collection of challengingly named paths which contain spaces
-    and/or quotes."""
+    and/or quotes.
+    """
     root_path = PurePath("/testZone/home/irods/test")
     rods_path = add_rods_path(root_path, tmp_path)
 
@@ -318,7 +319,8 @@ def special_paths(tmp_path):
 def ont_gridion(tmp_path, irods_groups):
     """A fixture providing a set of files based on output from an ONT GridION
     instrument. This dataset provides an example of file and directory naming
-    conventions. The file contents are dummy values."""
+    conventions. The file contents are dummy values.
+    """
     root_path = PurePath("/testZone/home/irods/test")
     rods_path = add_rods_path(root_path, tmp_path)
 

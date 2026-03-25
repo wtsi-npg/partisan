@@ -53,7 +53,8 @@ class InvalidJSONError(BatonError):
 
 class InvalidEnvelopeError(InvalidJSONError):
     """Exception raised when the baton JSON document envelope has invalid
-    structure, such as missing mandatory properties."""
+    structure, such as missing mandatory properties.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args)
