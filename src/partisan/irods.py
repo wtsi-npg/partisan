@@ -68,6 +68,8 @@ iRODS client 'baton' (https://github.com/wtsi-npg/baton).
 
 
 # iRODS error codes
+CAT_NO_ROWS_FOUND = -808000
+CAT_UNKNOWN_COLLECTION = -814000
 USER_FILE_DOES_NOT_EXIST = -310000
 
 
@@ -511,9 +513,17 @@ class Baton:
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
-        self._execute(
-            Baton.REMOVE, {"force": force}, item, timeout=timeout, tries=tries
-        )
+        try:
+            self._execute(
+                Baton.REMOVE, {"force": force}, item, timeout=timeout, tries=tries
+            )
+        except RodsError as e:
+            # It's a rather bogus error for iRODS to return for this.
+            if e.code != CAT_NO_ROWS_FOUND:
+                raise
+
+            if not force:
+                raise
 
     def rmdir(self, item: dict, recurse=False, force=True, timeout=None, tries=1):
         """Remove a collection.
@@ -523,17 +533,24 @@ class Baton:
                 this must be a suitable input for baton-do.
             recurse: Recursively remove the collection.
             force: Force removal of the collection, rather than moving it to iRODS
-                trash. Default is True.
+                trash and ignore errors if the collection is not present.  Default is
+                True.
             timeout: Operation timeout.
             tries: Number of times to try the operation.
         """
-        self._execute(
-            Baton.RMDIR,
-            {"recurse": recurse, "force": force},
-            item,
-            timeout=timeout,
-            tries=tries,
-        )
+        try:
+            self._execute(
+                Baton.RMDIR,
+                {"recurse": recurse, "force": force},
+                item,
+                timeout=timeout,
+                tries=tries,
+            )
+        except RodsError as e:
+            if e.code != CAT_UNKNOWN_COLLECTION:
+                raise
+            if not force:
+                raise
 
     def _execute(
         self, operation: str, args: dict, item: dict, timeout=None, tries=1
@@ -2775,7 +2792,8 @@ class DataObject(RodsItem):
 
         Args:
             force: Force removal of the data object, rather than moving it to
-               iRODS trash. Default is True.
+               iRODS trash and ignore errors if the data object is not present.
+               Default is True.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
         """
@@ -3597,7 +3615,8 @@ class Collection(RodsItem):
         Args:
             recurse: Recursively remove the collection and its contents.
             force: Force removal of the collection, rather than moving it to iRODS
-                trash. Default is True.
+                trash and ignore errors if the collection is not present.
+                Default is True.
             timeout: Operation timeout in seconds.
             tries: Number of times to try the operation.
         """
