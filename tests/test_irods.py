@@ -39,6 +39,7 @@ from partisan.irods import (
     Permission,
     RodsItem,
     Timestamp,
+    USER_FILE_DOES_NOT_EXIST,
     User,
     client_pool,
     current_user,
@@ -1439,10 +1440,21 @@ class TestCollection:
         assert coll.contents() != []
 
         with pytest.raises(RodsError, match="CAT_COLLECTION_NOT_EMPTY"):
-            coll.remove()
+            coll.remove(recurse=False)
 
         coll.remove(recurse=True)
         assert not coll.exists()
+
+    @m.context("When a Collection does not exist")
+    @m.it("Raises an error when attempting to remove, unless force=True")
+    def test_remove_nonexistent_collection(self):
+        coll = Collection("/nonexistent/collection")
+        assert not coll.exists()
+
+        with pytest.raises(RodsError, match="CAT_UNKNOWN_COLLECTION"):
+            coll.remove(force=False)
+
+        coll.remove(force=True)
 
 
 @m.describe("DataObject")
@@ -1644,6 +1656,17 @@ class TestDataObject:
         assert obj.exists()
         obj.remove()
         assert not obj.exists()
+
+    @m.context("When a data object does not exist")
+    @m.it("Raises an error when attempting to remove, unless force=True")
+    def test_remove_missing_data_object(self):
+        obj = DataObject("/nonexistent/data_object")
+        assert not obj.exists()
+
+        with pytest.raises(RodsError, match="CAT_NO_ROWS_FOUND"):
+            obj.remove(force=False)
+
+        obj.remove(force=True)
 
     @m.it("Has a size")
     def test_data_object_size(self, simple_data_object):
