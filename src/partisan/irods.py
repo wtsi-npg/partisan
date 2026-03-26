@@ -547,7 +547,7 @@ class Baton:
                 tries=tries,
             )
         except RodsError as e:
-            if e.code != CAT_UNKNOWN_COLLECTION:
+            if e.code not in {CAT_UNKNOWN_COLLECTION, USER_FILE_DOES_NOT_EXIST}:
                 raise
             if not force:
                 raise
