@@ -1218,7 +1218,13 @@ class AVU:
 
         Returns: A new AVU with the specified namespace.
         """
-        return AVU(self._attribute, self._value, self._units, namespace=namespace)
+        return AVU(
+            self._attribute,
+            self._value,
+            units=self._units,
+            operator=self._operator,
+            namespace=namespace,
+        )
 
     def is_history(self) -> bool:
         """Return true if this is a history AVU."""

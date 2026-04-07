@@ -270,9 +270,15 @@ class TestAVU:
 
         assert AVU("a", 1) != AVU("a", 1, "mm")
 
+        assert AVU("a", 1) == AVU("a", 1, operator="=")
+
         assert AVU("a", 1).with_namespace("x") == AVU("a", 1).with_namespace("x")
 
         assert AVU("a", 1).with_namespace("x") != AVU("a", 1).with_namespace("y")
+
+        assert AVU("a", "1%", operator="like").with_namespace("x") == AVU(
+            "x:a", "1%", operator="like"
+        )
 
     def test_compare_avus_lt(self):
         assert AVU("a", 1) < AVU("b", 1)
