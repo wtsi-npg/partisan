@@ -17,6 +17,7 @@
 #
 # @author Keith James <kdj@sanger.ac.uk>
 
+import pytest
 from pytest import mark as m
 
 from partisan.irods import Baton, client_version
@@ -76,3 +77,14 @@ class TestBatonClient:
         assert c.pid() == pid
         c.stop()
         assert not c.is_running()
+
+    @m.context("When send fails in the worker thread")
+    @m.it("Propagates the send exception")
+    def test_propagates_send_exception(self):
+        c = Baton()
+        c.start()
+        try:
+            with pytest.raises(TypeError, match="not JSON serializable"):
+                c.list({Baton.COLL: object()}, timeout=1, tries=1)
+        finally:
+            c.stop()

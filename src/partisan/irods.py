@@ -574,7 +574,14 @@ class Baton:
         # significant time, a metadata change may not.
         def _start_send():
             q = LifoQueue(maxsize=1)
-            thread = Thread(target=lambda q, w: q.put(self._send(w)), args=(q, wrapped))
+
+            def _send_wrapped():
+                try:
+                    q.put((True, self._send(wrapped)))
+                except Exception as e:
+                    q.put((False, e))
+
+            thread = Thread(target=_send_wrapped)
             thread.start()
             return q, thread
 
@@ -605,7 +612,9 @@ class Baton:
                 )
                 continue
 
-            response = lifo.get(timeout=0.1)
+            ok, response = lifo.get(timeout=0.1)
+            if not ok:
+                raise response
 
             try:
                 return self._unwrap(response)
