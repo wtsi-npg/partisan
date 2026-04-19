@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2021 Genome Research Ltd. All rights reserved.
+# Copyright © 2021, 2026 Genome Research Ltd. All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@ from queue import Empty
 import pytest
 from pytest import mark as m
 
-from partisan.irods import client, client_pool
+from partisan.irods import Baton, client, client_pool
 
 
 @m.describe("BatonPool")
@@ -66,3 +66,32 @@ class TestBatonPool(object):
         assert len(clients) == pool_size
         for c in clients:
             assert not c.is_running()
+
+    @m.context("When putting an unhealthy client into the pool")
+    @m.it("Replaces it with a new Baton instance")
+    def test_pool_put_replaces_unhealthy(self):
+        with client_pool(maxsize=1) as p:
+            _ = p._queue.get_nowait()
+
+            bad = Baton()
+            bad._mark_unhealthy()
+            p.put(bad)
+            replacement = p._queue.get_nowait()
+
+            assert isinstance(replacement, Baton)
+            assert replacement is not bad
+            assert replacement.is_healthy()
+
+    @m.context("When putting a stopped but healthy client into the pool")
+    @m.it("Returns it to the pool for lazy restart on next get")
+    def test_pool_put_keeps_stopped_healthy(self):
+        with client_pool(maxsize=1) as p:
+            _ = p._queue.get_nowait()
+
+            stopped = Baton()
+            assert stopped.is_healthy()
+            assert not stopped.is_running()
+
+            p.put(stopped)
+            returned = p._queue.get_nowait()
+            assert returned is stopped

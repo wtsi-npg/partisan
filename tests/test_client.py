@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021 Genome Research Ltd. All rights reserved.
+# Copyright © 2020, 2021, 2026 Genome Research Ltd. All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
 import pytest
 from pytest import mark as m
 
+from partisan.exception import BatonError
 from partisan.irods import Baton, client_version
 
 
@@ -86,5 +87,32 @@ class TestBatonClient:
         try:
             with pytest.raises(TypeError, match="not JSON serializable"):
                 c.list({Baton.COLL: object()}, timeout=1, tries=1)
+            assert c.is_running()
+            assert c.is_healthy()
         finally:
             c.stop()
+
+    @m.context("When a fatal baton error occurs")
+    @m.it("Marks the client unhealthy and stops it")
+    def test_fatal_error_behaviour(self):
+        class FatalBaton(Baton):
+            def __init__(self):
+                super().__init__()
+                self.stop_calls = 0
+
+            def is_running(self):
+                return True
+
+            def stop(self):
+                self.stop_calls += 1
+
+            def _send(self, envelope):
+                raise BatonError("Fatal send failure")
+
+        c = FatalBaton()
+
+        with pytest.raises(BatonError, match="Fatal send failure"):
+            c._execute(Baton.LIST, {}, {}, timeout=1, tries=1)
+
+        assert not c.is_healthy()
+        assert c.stop_calls == 1
