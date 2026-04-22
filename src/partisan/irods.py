@@ -52,6 +52,7 @@ import dateutil.parser
 from structlog import get_logger
 
 from partisan.exception import (
+    BatonArgumentError,
     BatonError,
     BatonTimeoutError,
     InvalidEnvelopeError,
@@ -141,6 +142,7 @@ class Baton:
     def __init__(self):
         self._proc = None
         self._pid = None
+        self._healthy = True
 
     def __str__(self):
         return f"<Baton {Baton.CLIENT}, running: {self.is_running()}, PID: {self._pid}>"
@@ -148,6 +150,55 @@ class Baton:
     def is_running(self) -> bool:
         """Return true if the client is running."""
         return self._proc and self._proc.poll() is None
+
+    def is_healthy(self) -> bool:
+        """Return true if the client is considered reusable."""
+        return self._healthy
+
+    def _mark_healthy(self):
+        self._healthy = True
+
+    def _mark_unhealthy(self):
+        self._healthy = False
+
+    @staticmethod
+    def _is_fatal_exception(error: Exception) -> bool:
+        # iRODS RPC failures are expected and recoverable at the baton process level.
+        if isinstance(error, RodsError):
+            return False
+
+        # Local argument and serialisation failures should not stop a running baton
+        # process and force an expensive restart.
+        if isinstance(error, (BatonArgumentError, TypeError)):
+            return False
+
+        return isinstance(
+            error,
+            (
+                BatonError,
+                InvalidJSONError,
+                json.JSONDecodeError,
+                OSError,
+                EOFError,
+            ),
+        )
+
+    @contextmanager
+    def _healthy_state(self):
+        """Ensure the baton client is in a healthy state before an operation."""
+        if not self.is_running():
+            log.debug(f"{Baton.CLIENT} is not running ... starting")
+            self.start()
+            if not self.is_running():
+                raise BatonError(f"{Baton.CLIENT} failed to start")
+
+        try:
+            yield
+        except Exception as e:
+            if self._is_fatal_exception(e):
+                self._mark_unhealthy()
+                self.stop()
+            raise
 
     def pid(self):
         """Return the PID of the baton-do client process."""
@@ -177,6 +228,7 @@ class Baton:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        self._mark_healthy()
 
         self._pid = self._proc.pid
         log.debug(f"Started {Baton.CLIENT} process", pid=self._pid)
@@ -555,89 +607,93 @@ class Baton:
     def _execute(
         self, operation: str, args: dict, item: dict, timeout=None, tries=1
     ) -> dict:
-        if not self.is_running():
-            log.debug(f"{Baton.CLIENT} is not running ... starting")
-            self.start()
-            if not self.is_running():
-                raise BatonError(f"{Baton.CLIENT} failed to start")
+        with self._healthy_state():
+            wrapped = self._wrap(operation, args, item)
 
-        wrapped = self._wrap(operation, args, item)
+            # The most common failure mode we encounter with clients that use the iRODS C
+            # API is where the server stops responding to API calls on the current
+            # connection. In order to time out these bad operations, round-trips to the
+            # server are run in their own thread which provides API for managing the
+            # timeout behaviour.
+            #
+            # Not all long-duration API calls are bad, so timeouts must be set by
+            # operation type. A "put" operation of a multi-GiB file may legitimately take
+            # significant time, a metadata change may not.
+            def _start_send():
+                q = LifoQueue(maxsize=1)
 
-        # The most common failure mode we encounter with clients that use the iRODS C
-        # API is where the server stops responding to API calls on the current
-        # connection. In order to time out these bad operations, round-trips to the
-        # server are run in their own thread which provides API for managing the
-        # timeout behaviour.
-        #
-        # Not all long-duration API calls are bad, so timeouts must be set by
-        # operation type. A "put" operation of a multi-GiB file may legitimately take
-        # significant time, a metadata change may not.
-        def _start_send():
-            q = LifoQueue(maxsize=1)
-            thread = Thread(target=lambda q, w: q.put(self._send(w)), args=(q, wrapped))
-            thread.start()
-            return q, thread
+                def _send_wrapped():
+                    try:
+                        q.put((True, self._send(wrapped)))
+                    except Exception as e:
+                        q.put((False, e))
 
-        lifo, t = _start_send()
+                thread = Thread(target=_send_wrapped)
+                thread.start()
+                return q, thread
 
-        def _backoff_timeout(base_timeout, attempt: int):
-            if base_timeout is None:
-                return None
-            if base_timeout <= 0:
-                return 0
+            lifo, t = _start_send()
 
-            timeout = base_timeout * (self.BACKOFF_FACTOR**attempt)
-            if self.BACKOFF_MAX is not None:
-                timeout = min(timeout, self.BACKOFF_MAX)
+            def _backoff_timeout(base_timeout, attempt: int):
+                if base_timeout is None:
+                    return None
+                if base_timeout <= 0:
+                    return 0
 
-            return timeout
+                tout = base_timeout * (self.BACKOFF_FACTOR**attempt)
+                if self.BACKOFF_MAX is not None:
+                    tout = min(tout, self.BACKOFF_MAX)
 
-        for i in range(tries):
-            attempt_timeout = _backoff_timeout(timeout, i)
-            t.join(timeout=attempt_timeout)
+                return tout
+
+            for i in range(tries):
+                attempt_timeout = _backoff_timeout(timeout, i)
+                t.join(timeout=attempt_timeout)
+                if t.is_alive():
+                    log.warning(
+                        "Timed out sending",
+                        client=self,
+                        tryno=i,
+                        doc=wrapped,
+                        timeout=attempt_timeout,
+                    )
+                    continue
+
+                ok, response = lifo.get(timeout=0.1)
+                if not ok:
+                    raise response
+
+                try:
+                    return self._unwrap(response)
+                except RodsError as e:
+                    # We don't want to retry this case in the context of a list operation
+                    # because that's how we test for path existence in iRODS.
+                    if e.code == USER_FILE_DOES_NOT_EXIST and operation == Baton.LIST:
+                        raise
+
+                    if i >= tries - 1:
+                        raise
+                    log.warning(
+                        "RodsError, retrying",
+                        client=self,
+                        operation=operation,
+                        args=args,
+                        tryno=i,
+                        code=e.code,
+                        msg=str(e),
+                    )
+                    lifo, t = _start_send()
+
+            # Still alive after all the tries?
             if t.is_alive():
-                log.warning(
-                    "Timed out sending",
-                    client=self,
-                    tryno=i,
-                    doc=wrapped,
-                    timeout=attempt_timeout,
+                raise BatonTimeoutError(
+                    "Exhausted all timeouts, stopping client", client=self, tryno=tries
                 )
-                continue
 
-            response = lifo.get(timeout=0.1)
-
-            try:
-                return self._unwrap(response)
-            except RodsError as e:
-                # We don't want to retry this case in the context of a list operation
-                # because that's how we test for path existence in iRODS.
-                if e.code == USER_FILE_DOES_NOT_EXIST and operation == Baton.LIST:
-                    raise
-
-                if i >= tries - 1:
-                    raise
-                log.warning(
-                    "RodsError, retrying",
-                    client=self,
-                    operation=operation,
-                    args=args,
-                    tryno=i,
-                    code=e.code,
-                    msg=str(e),
-                )
-                lifo, t = _start_send()
-
-        # Still alive after all the tries?
-        if t.is_alive():
-            self.stop()
-            raise BatonTimeoutError(
-                "Exhausted all timeouts, stopping client", client=self, tryno=tries
+            raise BatonError(
+                f"Baton '{operation}' operation on {item} "
+                "finished without a response"
             )
-
-        raise BatonError(
-            f"Baton '{operation}' operation on {item} " "finished without a response"
-        )
 
     @staticmethod
     def _wrap(operation: str, args: dict, item: dict) -> dict:
@@ -714,7 +770,10 @@ class Baton:
 
             return d
 
-        return json.loads(resp, object_hook=hook)
+        try:
+            return json.loads(resp, object_hook=hook)
+        except json.JSONDecodeError as e:
+            raise InvalidJSONError(f"Invalid response JSON: '{resp}'") from e
 
     @staticmethod
     def _zone_hint_to_path(zone) -> str:
@@ -776,7 +835,12 @@ class BatonPool:
             raise BatonError("Attempted to get a client from a closed pool")
 
         c: Baton = self._queue.get(timeout=timeout)
-        log.debug(f"Getting a client from the pool: {c}")
+        log.debug(f"Getting a client from the pool", client=c)
+
+        if not c.is_healthy():
+            log.warning(f"Got an unhealthy client from the pool; replacing", client=c)
+            c.stop()
+            c = Baton()
 
         if not c.is_running():
             c.start()
@@ -791,10 +855,16 @@ class BatonPool:
             timeout: Timeout to put a client, in seconds. Raises queue.Full if the
             operation times out.
         """
-        log.debug(f"Returning a client to the pool: {c}")
+        log.debug(f"Returning a client to the pool", client=c)
 
-        if not c.is_running():
-            log.warn(f"Client returned to the pool is not running: {c}")
+        if not c.is_healthy():
+            log.warning(
+                f"Client to be returned to the pool is unhealthy; replacing", client=c
+            )
+            c.stop()
+            c = Baton()
+        elif not c.is_running():
+            log.warning(f"Client returned to the pool is not running", client=c)
 
         self._queue.put(c, timeout=timeout)
 
