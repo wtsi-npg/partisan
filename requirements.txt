@@ -1,5 +1,5 @@
 click==8.2.1
 python-dateutil==2.9.0.post0
-setuptools==82.0.1
+setuptools==83.0.0
 setuptools_git_versioning==3.1.0
 structlog==26.1.0
