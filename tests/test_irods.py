@@ -42,6 +42,7 @@ from partisan.irods import (
     USER_FILE_DOES_NOT_EXIST,
     User,
     client_pool,
+    client_version,
     current_user,
     make_rods_item,
     query_metadata,
@@ -1764,10 +1765,19 @@ class TestDataObject:
     def test_replicas(self, simple_data_object):
         obj = DataObject(simple_data_object)
 
+        major, minor, patch = client_version()
+
         assert len(obj.replicas()) == 2
         for r in obj.replicas():
             assert r.checksum == "39a4aa291ca849d601e4e5b8ed627a04"
             assert r.valid
+
+            # Physical path reporting for replicas was added in baton 6.1.0
+            if major >= 6 and minor >= 1:
+                assert r.physical_path is not None
+                assert r.physical_path.startswith("/var/lib/irods")
+            else:
+                assert r.physical_path is None
 
     @m.it("Can have its invalid replicas detected")
     def test_invalid_replica(self, invalid_replica_data_object):

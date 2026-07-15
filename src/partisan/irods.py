@@ -28,6 +28,7 @@ import re
 import subprocess
 import threading
 import time
+import unicodedata
 from abc import abstractmethod
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1366,6 +1367,19 @@ class Replica:
 
     iRODS may maintain multiple copies of the data backing a data object. Each one of
     these is modelled as a Replica instance. Every data object has at least one Replica.
+
+    Reporting physical paths requires a baton version >=6.1.0. When using earlier
+    versions, the physical path will always be None.
+
+    Args:
+        resource: The name of the resource where the replica is stored.
+        location: The location of the replica within the resource.
+        number: The replica number.
+        created: The creation date of the replica. Defaults to None.
+        modified: The last modification date of the replica. Defaults to None.
+        checksum: The checksum of the replica. Defaults to None.
+        valid: Whether the replica is valid. Defaults to True.
+        physical_path: The physical path of the replica. Defaults to None.
     """
 
     def __init__(
@@ -1377,6 +1391,7 @@ class Replica:
         modified=None,
         checksum=None,
         valid=True,
+        physical_path: str | None = None,
     ):
         if resource is None:
             raise ValueError("Replica resource may not be None")
@@ -1392,15 +1407,10 @@ class Replica:
         self.modified = modified
         self.checksum = checksum
         self.valid = valid
+        self.physical_path = _sanitise_path(physical_path)
 
     def __hash__(self):
-        return (
-            hash(self.number)
-            + hash(self.resource)
-            + hash(self.location)
-            + hash(self.checksum)
-            + hash(self.valid)
-        )
+        return hash(self._key())
 
     def __eq__(self, other):
         if not isinstance(other, Replica):
@@ -1410,48 +1420,13 @@ class Replica:
         # do not affect replica identity (defined by resource, location, number and
         # whether they are valid)
 
-        return (
-            self.number == other.number
-            and self.resource == other.resource
-            and self.location == other.location
-            and (
-                (self.checksum is None and other.checksum is None)
-                or (
-                    self.checksum is not None
-                    and other.checksum is not None
-                    and self.checksum == other.checksum
-                )
-            )
-            and self.valid == other.valid
-        )
+        return self._key() == other._key()
 
     def __lt__(self, other):
-        if self.number < other.number:
-            return True
+        if not isinstance(other, Replica):
+            return False
 
-        if self.number == other.number:
-            if self.resource < other.resource:
-                return True
-
-            if self.resource == other.resource:
-                if self.location < other.location:
-                    return True
-
-                if self.location == other.location:
-                    if self.checksum is not None and other.checksum is None:
-                        return True
-
-                    if self.checksum is None and other.checksum is not None:
-                        return False
-
-                    if self.checksum is not None and other.checksum is not None:
-                        if self.checksum < other.checksum:
-                            return True
-
-                    if self.checksum == other.checksum:
-                        return self.valid < other.valid
-
-        return False
+        return self._sort_key() < other._sort_key()
 
     def __repr__(self):
         return f"{self.number}:{self.resource}:{self.checksum}:{self.valid}"
@@ -1460,7 +1435,32 @@ class Replica:
         return (
             f"<Replica {self.number} {self.resource} checksum={self.checksum} "
             f"created={self.created} modified={self.modified} "
-            f"valid={self.valid}>"
+            f"valid={self.valid} physical_path={self.physical_path}>"
+        )
+
+    def _key(self) -> tuple:
+        """Return a key containing elements used by hash and eq, to keep them congruent."""
+        return (
+            self.number,
+            self.resource,
+            self.location,
+            self.checksum,
+            self.valid,
+            self.physical_path,
+        )
+
+    def _sort_key(self) -> tuple:
+        """Return a key containing only elements safe for sorting."""
+        return (
+            self.number,
+            self.resource,
+            self.location,
+            # Retain the behaviour where replicas with a checksum sort first (because False < True)
+            self.checksum is None,
+            self.checksum or "",
+            self.valid,
+            self.physical_path is None,
+            self.physical_path or "",
         )
 
 
@@ -4053,3 +4053,35 @@ def _local_file_checksum(path: Path | str, checksum_source) -> str:
         f" string, or a callable taking a path of a file and "
         f"returning a string"
     )
+
+
+# Stolen from npg-irods-python
+def _sanitise_path(path: str | None) -> str | None:
+    """Sanitise a path string by removing leading and trailing whitespace. This
+    function rejects strings that contain control characters and some other invisible
+    or unused Unicode characters, raising ValueError.
+
+    Returns:
+        A sanitised path string or None if the input is None.
+    """
+
+    def bad_char(c) -> bool:
+        if c == "\x00":
+            return True
+
+        # Cc: Control Non-printing control chars like NUL, tab, newline, ESC.
+        # Cf: Format Invisible formatting chars that affect text behaviour.
+        # Cs: Surrogate UTF-16 surrogate code points. These are not real standalone Unicode characters.
+        # Co: Private-use code points reserved for private agreements.
+        # Cn: Unassigned code points that are not currently assigned.
+        return unicodedata.category(c) in {"Cc", "Cf", "Cs", "Co", "Cn"}
+
+    if path is None:
+        return None
+
+    path = path.strip()
+    for i, char in enumerate(path):
+        if bad_char(char):
+            raise ValueError(f"Invalid character in '{path}' at position {i}: '{char}'")
+
+    return path
