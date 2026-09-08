@@ -1,6 +1,6 @@
-FROM ghcr.io/wtsi-npg/ub-18.04-baton-irods-4.2.11:latest
+FROM ghcr.io/wtsi-npg/ub-22.04-baton-irods-4.3.4:latest
 
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.14
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -29,7 +29,7 @@ RUN echo "deb [arch=amd64] https://packages.irods.org/apt/ $(lsb_release -sc) ma
     tee /etc/apt/sources.list.d/renci-irods.list && \
     apt-get update && \
     apt-get install -q -y --no-install-recommends \
-    irods-icommands="4.2.11-1~$(lsb_release -sc)"
+    irods-icommands="4.3.4-0~$(lsb_release -sc)"
 
 WORKDIR /app
 

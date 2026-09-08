@@ -18,7 +18,7 @@
 
 from pytest import mark as m
 
-from partisan.irods import Collection, DataObject
+from partisan.irods import DataObject
 
 
 class TestRegression:
