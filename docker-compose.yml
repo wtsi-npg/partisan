@@ -1,15 +1,14 @@
-
 services:
   irods-server:
     platform: linux/amd64
     container_name: irods-server
-    image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.11:latest"
+    image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.4:latest"
     ports:
       - "127.0.0.1:1247:1247"
       - "127.0.0.1:20000-20199:20000-20199"
     restart: always
     healthcheck:
-      test: ["CMD", "nc", "-z", "-v", "localhost", "1247"]
+      test: [ "CMD", "nc", "-z", "-v", "localhost", "1247" ]
       start_period: 30s
       interval: 5s
       timeout: 10s
@@ -24,7 +23,7 @@ services:
     environment:
       IRODS_ENVIRONMENT_FILE: "/app/tests/.irods/irods_environment.json"
       IRODS_PASSWORD: "irods"
-      IRODS_VERSION: "4.2.11"
+      IRODS_VERSION: "4.3.4"
     depends_on:
       irods-server:
         condition: service_healthy
