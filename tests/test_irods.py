@@ -37,9 +37,7 @@ from partisan.irods import (
     Collection,
     DataObject,
     Permission,
-    RodsItem,
     Timestamp,
-    USER_FILE_DOES_NOT_EXIST,
     User,
     client_pool,
     client_version,
@@ -51,7 +49,6 @@ from partisan.irods import (
     rods_users,
     server_version,
 )
-
 from src.partisan.irods import _calculate_file_checksum
 
 
@@ -90,6 +87,7 @@ class TestUser:
     @m.it("Is returned")
     def test_rods_user(self):
         user1 = rods_user("irods")
+        assert user1 is not None
         assert user1.name == "irods"
         assert user1.type == "rodsadmin"
         assert user1.is_rodsadmin()
@@ -97,6 +95,7 @@ class TestUser:
         assert not user1.is_rodsuser()
 
         user2 = rods_user("public")
+        assert user2 is not None
         assert user2.name == "public"
         assert user2.type == "rodsgroup"
         assert user2.is_group()
@@ -374,6 +373,7 @@ class TestRodsPath:
         for child in root.contents(recurse=False):
             assert child.ancestor_metadata() == root.metadata(), "Shared root metadata"
 
+            assert isinstance(child, Collection)
             for desc in child.contents(recurse=True):
                 assert desc.ancestor_metadata() == sorted(
                     [
@@ -387,7 +387,7 @@ class TestRodsPath:
                 item.add_metadata(AVU("name", item.path.name))
 
         for item in root.contents(recurse=True):
-            if item.rods_type == DataObject and item.name in [
+            if isinstance(item, DataObject) and item.name in [
                 "leaf1.txt",
                 "leaf2.txt",
             ]:
@@ -637,17 +637,19 @@ class TestCollection:
     @m.it("Can be found by its metadata")
     def test_meta_query_collection(self, simple_collection):
         coll = Collection(simple_collection)
+        zone = coll.path.as_posix()
 
         avu = AVU("abcde", "12345")
         coll.add_metadata(avu)
         assert coll.metadata() == [avu]
 
-        found = query_metadata(avu, collection=True, zone=coll)
+        found = query_metadata(avu, collection=True, zone=zone)
         assert found == [Collection(simple_collection)]
 
     @m.it("Can be found by timestamp")
     def test_timestamp_query_collection(self, simple_collection):
         coll = Collection(simple_collection)
+        zone = coll.path.as_posix()
 
         avu = AVU("abcde", "12345")
         coll.add_metadata(avu)
@@ -655,11 +657,11 @@ class TestCollection:
 
         le_created = Timestamp(coll.created(), Timestamp.Event.CREATED, operator="n<=")
 
-        found = query_metadata(avu, timestamps=[le_created], collection=True, zone=coll)
+        found = query_metadata(avu, timestamps=[le_created], collection=True, zone=zone)
         assert found == [Collection(simple_collection)]
 
         gt_created = Timestamp(coll.created(), Timestamp.Event.CREATED, operator="n>")
-        found = query_metadata(avu, timestamps=[gt_created], collection=True, zone=coll)
+        found = query_metadata(avu, timestamps=[gt_created], collection=True, zone=zone)
         assert found == []
 
     @m.context("When a Collection does not exist")
@@ -796,7 +798,7 @@ class TestCollection:
         for item in coll.contents(recurse=True):
             expected = (
                 [irods_own]
-                if item.rods_type == DataObject and item.name == "leaf1.txt"
+                if isinstance(item, DataObject) and item.name == "leaf1.txt"
                 else [irods_own, public_read]
             )
             assert item.acl() == expected, "Collection content ACL updated"
@@ -878,7 +880,7 @@ class TestCollection:
         for item in coll.contents(recurse=True):
             expected = (
                 [irods_own, public_read]
-                if item.rods_type == DataObject and item.name == "leaf1.txt"
+                if isinstance(item, DataObject) and item.name == "leaf1.txt"
                 else [irods_own]
             )
             assert item.acl() == expected, "Collection content ACL updated"
@@ -960,7 +962,7 @@ class TestCollection:
         for item in coll.contents(recurse=True):
             expected = (
                 [irods_own, study_01_read, study_02_read]
-                if item.rods_type == DataObject and item.name == "leaf1.txt"
+                if isinstance(item, DataObject) and item.name == "leaf1.txt"
                 else new_acl
             )
             assert item.acl() == expected, "Collection content ACL updated"
@@ -1009,8 +1011,11 @@ class TestCollection:
 
         items = [item for item in coll.put(local_path, recurse=False)]
         for item in items:
+            if isinstance(item, Exception):
+                raise item
             assert item.exists()
 
+        assert isinstance(items[0], Collection)
         assert items[0] == coll
         assert items[0].contents() == [Collection(coll.path / "child")]
 
@@ -1032,6 +1037,8 @@ class TestCollection:
 
         items = [item for item in coll.put(local_path, recurse=False)]
         for item in items:
+            if isinstance(item, Exception):
+                raise item
             assert item.exists()
 
         assert Collection(dest).contents(recurse=True) == [
@@ -1050,6 +1057,8 @@ class TestCollection:
             item for item in coll.put(local_path, recurse=True, verify_checksum=True)
         }
         for item in items:
+            if isinstance(item, Exception):
+                raise item
             assert item.exists()
 
         sub1 = Collection(coll.path / "collection")
@@ -1092,6 +1101,8 @@ class TestCollection:
             )
         }
         for item in items:
+            if isinstance(item, Exception):
+                raise item
             assert item.exists()
 
         sub1 = Collection(coll.path / "collection")
@@ -1122,6 +1133,8 @@ class TestCollection:
             )
         }
         for item in items:
+            if isinstance(item, Exception):
+                raise item
             assert item.exists()
 
         sub1 = Collection(coll.path / "collection")
@@ -1183,7 +1196,7 @@ class TestCollection:
         present = [
             item
             for item in coll.put(local_path, recurse=True, yield_exceptions=False)
-            if item.exists()
+            if not isinstance(item, Exception) and item.exists()
         ]
         assert len(present) == 8
 
@@ -1228,6 +1241,8 @@ class TestCollection:
         }
 
         for item in items:
+            if isinstance(item, Exception):
+                raise item
             assert item.exists()
         assert len(items) == 7
         assert "lorem.txt" not in [
@@ -1519,7 +1534,7 @@ class TestDataObject:
         assert obj.checksum() == "39a4aa291ca849d601e4e5b8ed627a04"
 
     @m.it("Can be put from a local file with checksum calculated on the fly")
-    def test_data_object_put_checksum_supplied(self, simple_collection):
+    def test_data_object_put_checksum_on_fly(self, simple_collection):
         obj = DataObject(simple_collection / "new.txt")
         assert not obj.exists()
 
@@ -1563,7 +1578,7 @@ class TestDataObject:
         assert obj.checksum() == checksum
 
     @m.it("Raises an error if a supplied local checksum callable does not match")
-    def test_data_object_put_callable_supplied(self, simple_collection):
+    def test_data_object_put_callable_supplied_mismatch(self, simple_collection):
         obj = DataObject(simple_collection / "new.txt")
         assert not obj.exists()
 
@@ -1790,7 +1805,9 @@ class TestDataObject:
     def test_creation_timestamp(self, simple_data_object):
         obj = DataObject(simple_data_object)
 
-        assert obj.created() == min([o.created for o in obj.replicas()])
+        assert obj.created() == min(
+            [o.created for o in obj.replicas() if o.created is not None]
+        )
 
     @m.it(
         "Has a modification timestamp equal to the earliest replica modification time"
@@ -1798,13 +1815,17 @@ class TestDataObject:
     def test_modification_timestamp(self, simple_data_object):
         obj = DataObject(simple_data_object)
 
-        assert obj.modified() == min([o.modified for o in obj.replicas()])
+        assert obj.modified() == min(
+            [o.modified for o in obj.replicas() if o.modified is not None]
+        )
 
     @m.it("Has a timestamp equal to the earliest replica modification time")
     def test_timestamp(self, simple_data_object):
         obj = DataObject(simple_data_object)
 
-        assert obj.timestamp() == min([o.modified for o in obj.replicas()])
+        assert obj.timestamp() == min(
+            [o.modified for o in obj.replicas() if o.modified is not None]
+        )
 
     @m.it("Can be overwritten")
     def test_overwrite_data_object(self, tmp_path, simple_data_object):
@@ -1941,12 +1962,13 @@ class TestDataObject:
     @m.it("Can be found by its metadata")
     def test_query_meta_data_object(self, simple_data_object):
         obj = DataObject(simple_data_object)
+        zone = obj.path.as_posix()
 
         avu = AVU("abcde", "12345")
         obj.add_metadata(avu)
         assert obj.metadata() == [avu]
 
-        found = query_metadata(avu, data_object=True, zone=obj.path)
+        found = query_metadata(avu, data_object=True, zone=zone)
         assert found == [DataObject(simple_data_object)]
 
     @m.it("Can have access controls added")
@@ -2152,9 +2174,13 @@ class TestQueryMetadata:
         avu = AVU("attr1", "value1")
         sub1.add_metadata(avu)
 
-        assert coll.query_metadata(avu, zone=coll) == [sub1]  # sub1 is a child of coll
-        assert sub1.query_metadata(avu, zone=sub1) == [sub1]
-        assert sub1.query_metadata(avu, zone=sub2) == []  # sub2 is not a child of sub1
+        assert coll.query_metadata(avu, zone=coll.path.as_posix()) == [
+            sub1
+        ]  # sub1 is a child of coll
+        assert sub1.query_metadata(avu, zone=sub1.path.as_posix()) == [sub1]
+        assert (
+            sub1.query_metadata(avu, zone=sub2.path.as_posix()) == []
+        )  # sub2 is not a child of sub1
 
 
 @m.describe("Test special paths (quotes, spaces)")
@@ -2311,14 +2337,18 @@ class TestJSON:
 
     @m.it("Can deserialize a data object from JSON")
     def test_data_object_json_deserialize(self, simple_data_object):
-        metadata = [AVU("a", 1), AVU("b", 2), AVU("c", 3)]
+        metadata = [
+            AVU("a", 1),
+            AVU("b", 2),
+            AVU("c", 3),
+        ]
         acl = [
             AC("hello", Permission.WRITE, zone="testZone"),
             AC("irods", Permission.OWN, zone="testZone"),
             AC("public", Permission.READ, zone="testZone"),
         ]
 
-        obj1 = DataObject(simple_data_object, pool=None)
+        obj1: DataObject = DataObject(simple_data_object, pool=None)
 
         assert not obj1.connected()
         with pytest.raises(BatonError, match="operation 'checksum'"):
@@ -2330,7 +2360,7 @@ class TestJSON:
         obj1.add_permissions(*acl)
 
         json_str = obj1.to_json(indent=None, sort_keys=True)
-        obj2 = DataObject.from_json(json_str)
+        obj2: DataObject = DataObject.from_json(json_str)
 
         assert not obj2.connected()
         with pytest.raises(BatonError, match="operation 'checksum'"):

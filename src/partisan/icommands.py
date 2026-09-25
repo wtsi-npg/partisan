@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021, 2022, 2023, 2024, 2025 Genome Research Ltd. All
-# rights reserved.
+# Copyright © 2020, 2021, 2022, 2023, 2024, 2025, 2026 Genome Research Ltd.
+# All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-# @author Keith James <kdj@sanger.ac.uk>
 
 import json
 import os
@@ -102,7 +101,7 @@ def user_exists(name: str) -> bool:
     return False
 
 
-def iuserinfo(name: str = None) -> str:
+def iuserinfo(name: str | None = None) -> str:
     cmd = ["iuserinfo"]
     if name is not None:
         cmd.append(_bs_escape(name))
@@ -115,7 +114,7 @@ def iuserinfo(name: str = None) -> str:
     raise RodsError(completed.stderr.decode("utf-8").strip())
 
 
-def imkdir(remote_path: PurePath | str, make_parents=True):
+def imkdir(remote_path: PurePath | str, make_parents: bool = True):
     cmd = ["imkdir"]
     if make_parents:
         cmd.append("-p")
@@ -170,9 +169,9 @@ def iinit():
 def iget(
     remote_path: PurePath | str,
     local_path: PurePath | str,
-    force=False,
-    verify_checksum=True,
-    recurse=False,
+    force: bool = False,
+    verify_checksum: bool = True,
+    recurse: bool = False,
 ):
     cmd = ["iget"]
     if force:
@@ -190,9 +189,9 @@ def iget(
 def iput(
     local_path: PurePath | str,
     remote_path: PurePath | str,
-    force=False,
-    verify_checksum=True,
-    recurse=False,
+    force: bool = False,
+    verify_checksum: bool = True,
+    recurse: bool = False,
 ):
     cmd = ["iput"]
     if force:
@@ -207,7 +206,7 @@ def iput(
     _run(cmd)
 
 
-def irm(remote_path: PurePath | str, force=False, recurse=False):
+def irm(remote_path: PurePath | str, force: bool = False, recurse: bool = False):
     cmd = ["irm"]
     if force:
         cmd.append("-f")
@@ -220,14 +219,14 @@ def irm(remote_path: PurePath | str, force=False, recurse=False):
     # absent, even when -f is used. This should be silent for a missing target.
     try:
         _run(cmd)
-    except RodsError as re:
+    except RodsError as r:
         if force:
-            log.error(re.message, code=re.code)
+            log.error(r.message, code=r.code)
         else:
             raise
 
 
-def itrim(remote_path: PurePath | str, replica_num: int, min_replicas=2):
+def itrim(remote_path: PurePath | str, replica_num: int, min_replicas: int = 2):
     cmd = [
         "itrim",
         "-n",
@@ -242,9 +241,9 @@ def itrim(remote_path: PurePath | str, replica_num: int, min_replicas=2):
 def icp(
     from_path: PurePath | str,
     to_path: PurePath | str,
-    force=False,
-    verify_checksum=True,
-    recurse=False,
+    force: bool = False,
+    verify_checksum: bool = True,
+    recurse: bool = False,
 ):
     cmd = ["icp"]
     if force:
@@ -308,7 +307,7 @@ def have_admin() -> bool:
 
 
 def add_specific_sql(alias: str, sql: str):
-    """Add a specific query under the alias, if the alias is not already used."""
+    """Add a specific query under the alias if the alias is not already used."""
     alias = _bs_escape(alias)
 
     if not has_specific_sql(alias):

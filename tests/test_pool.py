@@ -15,7 +15,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-# @author Keith James <kdj@sanger.ac.uk>
 
 from queue import Empty
 
@@ -44,7 +43,7 @@ class TestBatonPool(object):
 
     @m.context("After getting maxsize clients")
     @m.it("Getting another client times out")
-    def test_get_clients(self):
+    def test_get_clients_timeout(self):
         with client_pool(maxsize=1) as p:
             with client(p) as c1:
                 assert c1.is_running()

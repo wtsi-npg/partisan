@@ -1,3 +1,4 @@
+basedpyright==1.30.1
+black==26.5.1
 pytest-it==0.1.5
 pytest==9.1.1
-black==26.5.1

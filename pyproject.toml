@@ -6,10 +6,10 @@ readme = { file = "README.md", content-type = "text/markdown" }
 authors = [{ name = "Keith James", email = "kdj@sanger.ac.uk" }]
 maintainers = [{ name = "Michael Kubiak", email = "mk35@sanger.ac.uk" }]
 classifiers = ["Development Status :: 5 - Production/Stable",
-               "Intended Audience :: Developers",
-               "Programming Language :: Python"]
+    "Intended Audience :: Developers",
+    "Programming Language :: Python"]
 keywords = ["irods", "baton", "api"]
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 
 dynamic = ["version"]
 
@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
+    "basedpyright",
     "black >=26.0,<27",
     "pytest >=8.0,<10",
     "pytest-it >=0.1.5"
@@ -42,3 +43,16 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools-git-versioning]
 enabled = true
+
+[tool.basedpyright]
+include = ["src"]
+typeCheckingMode = "standard"
+pythonPlatform = "Linux"
+
+reportMissingImports = "error"
+reportMissingParameterType = "none"
+reportMissingTypeArgument = "warning"
+reportUnknownArgumentType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
