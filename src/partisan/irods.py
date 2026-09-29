@@ -1376,55 +1376,19 @@ class AVU:
         return self._attribute.endswith(AVU.HISTORY_SUFFIX)
 
     def __hash__(self):
-        return hash(self.attribute) + hash(self.value) + hash(self.units)
+        return hash(self._key())
 
     def __eq__(self, other: object):
         if not isinstance(other, AVU):
-            return False
+            return NotImplemented
 
-        return (
-            self.attribute == other.attribute
-            and self.value == other.value
-            and (
-                (self.units is None and other.units is None)
-                or (
-                    self.units is not None
-                    and other.units is not None
-                    and self.units == other.units
-                )
-            )
-        )
+        return self._key() == other._key()
 
     def __lt__(self, other):
-        if self.namespace and not other.namespace:
-            return True
+        if not isinstance(other, AVU):
+            return NotImplemented
 
-        if not self.namespace and other.namespace:
-            return False
-
-        if self.namespace and other.namespace:
-            if self.namespace < other.namespace:
-                return True
-
-        if self.namespace == other.namespace:
-            if self.attribute < other.attribute:
-                return True
-
-            if self.attribute == other.attribute:
-                if self.value < other.value:
-                    return True
-
-                if self.value == other.value:
-                    if self.units is not None and other.units is None:
-                        return True
-                    if self.units is None and other.units is not None:
-                        return False
-                    if self.units is None and other.units is None:
-                        return False
-
-                    return self.units < other.units
-
-        return False
+        return self._sort_key() < other._sort_key()
 
     def __repr__(self):
         units: str = " " + self._units if self._units is not None else ""
@@ -1433,6 +1397,23 @@ class AVU:
     def __str__(self):
         units = " " + self._units if self._units else ""
         return f"<AVU '{self.attribute}' = '{self.value}'{units}>"
+
+    def _key(self) -> tuple[str, Any, str | None]:
+        """Return a key containing elements used by hash and eq, to keep them congruent."""
+        return self.attribute, self.value, self.units
+
+    def _sort_key(self) -> tuple[bool, str, str, Any, bool, str]:
+        """Return a key retaining namespace precedence and safely sorting optional units."""
+        # Namespaced AVUs sort first because False sorts before True.
+        namespace_is_absent = self.namespace == ""
+        return (
+            namespace_is_absent,
+            self.namespace,
+            self.attribute,
+            self.value,
+            self.units is None,
+            self.units or "",
+        )
 
 
 @total_ordering
@@ -1488,7 +1469,7 @@ class Replica:
 
     def __eq__(self, other: object):
         if not isinstance(other, Replica):
-            return False
+            return NotImplemented
 
         # Timestamps are intentionally not included in checking equality because they
         # do not affect replica identity (defined by resource, location, number and
@@ -1498,7 +1479,7 @@ class Replica:
 
     def __lt__(self, other):
         if not isinstance(other, Replica):
-            return False
+            return NotImplemented
 
         return self._sort_key() < other._sort_key()
 
@@ -1525,7 +1506,7 @@ class Replica:
 
     def _sort_key(
         self,
-    ) -> tuple[int, str, str, bool, str | None, bool, bool, str | None]:
+    ) -> tuple[int, str, str, bool, str, bool, bool, str]:
         """Return a key containing only elements safe for sorting."""
         return (
             self.number,
@@ -3320,8 +3301,8 @@ class Collection(RodsItem):
         self,
         remote_path: PurePath | str,
         local_path: str | os.PathLike[str] | None = None,
-        check_type=True,
-        pool=default_pool,
+        check_type: bool = True,
+        pool: BatonPool | None = default_pool,
     ):
         """Collection constructor.
 

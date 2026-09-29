@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2020, 2021, 2023, 2024, 2025 Genome Research Ltd. All
+# Copyright © 2020, 2021, 2023, 2024, 2025, 2026 Genome Research Ltd. All
 # rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-# @author Keith James <kdj@sanger.ac.uk>
 
 import hashlib
 import json
@@ -280,6 +279,13 @@ class TestAVU:
             "x:a", "1%", operator="like"
         )
 
+        assert (
+            AVU("a", 1) == 1
+        ) is False, "Falls back to identity comparison on NotImplemented"
+        assert (
+            1 == AVU("a", 1)
+        ) is False, "Falls back to identity comparison on NotImplemented"
+
     def test_compare_avus_lt(self):
         assert AVU("a", 1) < AVU("b", 1)
         assert AVU("a", 1) < AVU("a", 2)
@@ -292,6 +298,9 @@ class TestAVU:
         assert AVU("z", 99).with_namespace("x") < AVU("a", 1)
 
         assert AVU("a", 1).with_namespace("x") < AVU("a", 1).with_namespace("y")
+
+        with pytest.raises(TypeError):
+            assert AVU("a", 1) < 1
 
     def test_compare_avus_sort(self):
         x = [AVU("z", 1), AVU("y", 1), AVU("x", 1)]
@@ -1707,6 +1716,7 @@ class TestDataObject:
         assert obj.size() == 555
         assert obj.checksum() is None
         assert obj.is_consistent_size()
+
         chk = obj.checksum(calculate_checksum=True)
         assert obj.checksum() == chk
         assert chk == "39a4aa291ca849d601e4e5b8ed627a04"
@@ -1721,6 +1731,7 @@ class TestDataObject:
         assert empty.size() == 0
         assert empty.checksum() is None
         assert empty.is_consistent_size()
+
         chk = empty.checksum(calculate_checksum=True)
         assert empty.checksum() == chk
         assert chk == "d41d8cd98f00b204e9800998ecf8427e"  # Checksum of an empty file
