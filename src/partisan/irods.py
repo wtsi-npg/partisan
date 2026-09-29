@@ -1380,13 +1380,13 @@ class AVU:
 
     def __eq__(self, other: object):
         if not isinstance(other, AVU):
-            raise NotImplementedError(f"Comparison (eq) of an AVU with '{other}'")
+            return NotImplemented
 
         return self._key() == other._key()
 
     def __lt__(self, other):
         if not isinstance(other, AVU):
-            raise NotImplementedError(f"Comparison (lt) of an AVU with '{other}'")
+            return NotImplemented
 
         return self._sort_key() < other._sort_key()
 
@@ -1469,7 +1469,7 @@ class Replica:
 
     def __eq__(self, other: object):
         if not isinstance(other, Replica):
-            raise NotImplementedError(f"Comparison (eq) of a Replica with '{other}'")
+            return NotImplemented
 
         # Timestamps are intentionally not included in checking equality because they
         # do not affect replica identity (defined by resource, location, number and
@@ -1479,7 +1479,7 @@ class Replica:
 
     def __lt__(self, other):
         if not isinstance(other, Replica):
-            raise NotImplementedError(f"Comparison (lt) of a Replica with '{other}'")
+            return NotImplemented
 
         return self._sort_key() < other._sort_key()
 
