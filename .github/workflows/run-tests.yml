@@ -21,6 +21,10 @@ jobs:
           { version: "4.2.7",
             client_image: "ghcr.io/wtsi-npg/ub-16.04-irods-clients-4.2.7:latest",
             server_image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest",
+            experimental: true },
+          { version: "4.2.7-engineering",
+            client_image: "ghcr.io/wtsi-npg/ub-16.04-irods-clients-4.2.7:latest",
+            server_image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7-engineering:latest",
             experimental: false },
           { version: "4.3.4",
             client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.4:latest",
@@ -122,11 +126,11 @@ jobs:
           pip install -r requirements.txt
           pip install -r test-requirements.txt
 
-      - name: "Check code formatting [Black]"
+      - name: "Check code formatting"
         run: |
           black --check --diff ./src ./tests
 
-      - name: "Check types [basedpyright]"
+      - name: "Check types"
         env:
           PYTHON_VERSION: ${{ matrix.python-version }}
         run:
