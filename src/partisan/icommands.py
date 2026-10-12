@@ -169,15 +169,15 @@ def iinit():
 def iget(
     remote_path: PurePath | str,
     local_path: PurePath | str,
-    replicate_num: int | None = None,
+    replica_num: int | None = None,
     force: bool = False,
     verify_checksum: bool = True,
     recurse: bool = False,
 ):
     cmd = ["iget"]
-    if replicate_num is not None:
+    if replica_num is not None:
         cmd.append("-n")
-        cmd.append(_bs_escape(str(replicate_num)))
+        cmd.append(_bs_escape(str(replica_num)))
     if force:
         cmd.append("-f")
     if verify_checksum:
