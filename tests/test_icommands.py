@@ -70,7 +70,7 @@ FILE_IDS = [
 ]
 
 
-@m.describe("icommand wrappers should preservce paths with special characters")
+@m.describe("icommand wrappers should preserve paths with special characters")
 @m.parametrize("filename", FILENAMES, ids=FILE_IDS)
 class TestICommandPaths:
     @m.context("When creating and removing a collection with special characters")
