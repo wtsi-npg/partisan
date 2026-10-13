@@ -2381,7 +2381,13 @@ class RodsItem(os.PathLike[str]):
         if isinstance(self, DataObject) and isinstance(other, Collection):
             return False
 
-        return self.path < other.path
+        if isinstance(self, Collection) and isinstance(other, Collection):
+            return self.path < other.path
+
+        if isinstance(self, DataObject) and isinstance(other, DataObject):
+            return (self.path, self.name) < (other.path, other.name)
+
+        return NotImplemented
 
     @property
     @abstractmethod
