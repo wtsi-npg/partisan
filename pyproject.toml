@@ -14,7 +14,7 @@ requires-python = ">=3.13"
 dynamic = ["version"]
 
 dependencies = [
-    "python-dateutil >=2.9.0,<3",
+    "python-dateutil >=2.9.0,<4",
     "structlog >=23.3.0"
 ]
 
