@@ -6,6 +6,11 @@ updates:
     interval: "daily"
     time: "00:00"
     timezone: "Europe/London"
+  cooldown:
+    default-days: 5
+    semver-major-days: 90
+    semver-minor-days: 30
+    semver-patch-days: 10
   open-pull-requests-limit: 5
 
 - package-ecosystem: "github-actions"
