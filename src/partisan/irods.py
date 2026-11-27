@@ -2864,7 +2864,7 @@ class DataObject(RodsItem):
             glog.info(msg, local_checksum=_local, remote_checksum=_remote)
             return match
 
-        local = Path(local_path)
+        local = Path(local_path).resolve()
         local_chk = None
         remote_chk = self.checksum()
 
@@ -2990,10 +2990,11 @@ class DataObject(RodsItem):
             plog.info(msg, local_checksum=_local, remote_checksum=_remote)
             return match
 
+        local = Path(local_path).resolve()
         local_chk = None
 
         if compare_checksums:
-            local_chk = _local_file_checksum(local_path, local_checksum)
+            local_chk = _local_file_checksum(local, local_checksum)
 
         if self.exists():
             remote_chk = self.checksum()
@@ -3028,7 +3029,7 @@ class DataObject(RodsItem):
                     f"Data object already exists at '{self}' and force is False"
                 )
 
-        self._put(local_path, **kwargs)
+        self._put(local, **kwargs)
         remote_chk = self.checksum()
         if compare_checksums:
             _compare_checksums(
@@ -3660,8 +3661,6 @@ class Collection(RodsItem):
                     except Exception as fe:
                         yield from _handle_exception(fe)
 
-        local_root = Path(local_path)
-
         if local_checksum is not None:
             raise NotImplementedError(
                 "local_checksum is not implemented for Collection::get"
@@ -3671,6 +3670,7 @@ class Collection(RodsItem):
                 "compare_checksums is not implemented for Collection::get"
             )
 
+        local_root = Path(local_path)
         try:
             local_root = local_root.resolve(strict=True)
             if not local_root.is_dir():
@@ -3829,9 +3829,13 @@ class Collection(RodsItem):
                     except Exception as fe:
                         yield from _handle_exception(fe)
 
+        local_root = Path(local_path)
+
         try:
-            if not Path(local_path).resolve(strict=True).is_dir():
-                raise ValueError(f"Local path '{local_path}' is not a directory")
+            if not local_root.resolve(strict=True).is_dir():
+                raise ValueError(
+                    f"Local path '{local_root.as_posix()}' is not a directory"
+                )
         except Exception as e:
             yield from _handle_exception(e)
             return
@@ -3842,7 +3846,7 @@ class Collection(RodsItem):
             yield from _handle_exception(e)
 
         if recurse:
-            for dirpath, dirnames, filenames in os.walk(local_path, topdown=True):
+            for dirpath, dirnames, filenames in os.walk(local_root, topdown=True):
                 # As topdown is True, we can sort dirnames in-place to get a predictable
                 # walk order
                 dirnames.sort()
@@ -3877,7 +3881,7 @@ class Collection(RodsItem):
         else:
             dirs, files = [], []
             try:
-                for local in Path(local_path).iterdir():
+                for local in local_root.iterdir():
                     dirs.append(local) if local.is_dir() else files.append(local)
             except Exception as e:
                 yield from _handle_exception(e)
@@ -4255,40 +4259,33 @@ def _calculate_file_checksum(path: Path | str) -> str:
 
 
 def _local_file_checksum(
-    path: Path | str,
+    path: Path,
     checksum_source: ChecksumSource | None,
 ) -> str:
+    clog = log.bind(path=path.as_posix())
+
     if checksum_source is None:
         checksum = _calculate_file_checksum(path)
-        log.info(
-            "Calculated checksum from local file data",
-            local_checksum=checksum,
-            path=path,
-        )
+        clog.info("Calculated checksum from local file data", local_checksum=checksum)
         return checksum
 
     if callable(checksum_source):
         checksum = checksum_source(path)
-        log.info(
-            "Obtained checksum from supplied callable",
-            local_checksum=checksum,
-            path=path,
-        )
+        clog.info("Obtained checksum from supplied callable", local_checksum=checksum)
         return checksum
 
     if isinstance(checksum_source, os.PathLike):
         with open(checksum_source, "r") as f:
             checksum = f.read()
-            log.info(
+            clog.info(
                 "Read pre-calculated checksum from a local file",
                 local_checksum=checksum,
-                path=path,
             )
             return checksum
 
     if isinstance(checksum_source, str):
         checksum = checksum_source
-        log.info("Using provided checksum string", local_checksum=checksum, path=path)
+        clog.info("Using provided checksum string", local_checksum=checksum, path=path)
         return checksum
 
     raise ValueError(
